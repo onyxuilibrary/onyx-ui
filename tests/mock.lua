@@ -599,6 +599,10 @@ local function absPos(inst)
 	local parent = rawget(inst, "__parent")
 	if not parent then return Vector2.new() end
 	local pp = absPos(parent)
+	if rawget(parent, "__className") == "ScrollingFrame" then
+		local scroll = rawget(parent, "__props").CanvasPosition
+		if scroll then pp = Vector2.new(pp.X - scroll.X, pp.Y - scroll.Y) end
+	end
 	local t, r, b, l = pad(parent)
 	local origin = Vector2.new(pp.X + l, pp.Y + t)
 	local layout = childOfClass(parent, "UIListLayout")

@@ -1090,6 +1090,47 @@ cl:Unload()
 noErrors("changelog")
 
 --------------------------------------------------------------------------------
+section("crowded tab strip")
+--------------------------------------------------------------------------------
+
+local cw = Onyx:CreateWindow({ name = "Crowded", size = UDim2.fromOffset(628, 460) })
+local crowd = {}
+for _, name in ipairs({ "Rage", "Anti-Aim", "Players", "Weapon", "Skins", "Visuals", "Feedback", "Player", "World", "HUD", "Misc" }) do
+	table.insert(crowd, cw:CreateTab({ name = name }))
+end
+M.flush()
+local strip = cw._tabList
+check(strip.CanvasSize.X.Offset > strip.AbsoluteSize.X, "strip scrolls when tabs don't fit")
+local overlaps = 0
+for _, tab in ipairs(cw._tabs) do
+	if tab._buttonLabel.TextBounds.X > tab.button.AbsoluteSize.X - 8 then
+		overlaps = overlaps + 1
+	end
+end
+eq(overlaps, 0, "every tab is wider than its name")
+check(cw._tabRight.Visible and not cw._tabLeft.Visible, "right arrow shows at the start")
+crowd[#crowd]:Select(true)
+local b = crowd[#crowd].button
+local x = b.AbsolutePosition.X - strip.AbsolutePosition.X
+check(x >= 0 and x + b.AbsoluteSize.X <= strip.AbsoluteSize.X, "selected tab scrolls into view")
+check(cw._tabLeft.Visible, "left arrow shows once scrolled")
+cw:Unload()
+
+local fw = Onyx:CreateWindow({ name = "Few" })
+fw:CreateTab({ name = "One" })
+fw:CreateTab({ name = "Two" })
+M.flush()
+eq(fw._tabList.CanvasSize.X.Offset, 0, "few tabs: no scrolling")
+check(not fw._tabLeft.Visible and not fw._tabRight.Visible, "few tabs: no arrows")
+local filled = 0
+for _, tab in ipairs(fw._tabs) do
+	filled = filled + tab.button.AbsoluteSize.X
+end
+check(math.abs(filled - fw._tabList.AbsoluteSize.X) <= 2, "few tabs: fill the whole strip")
+fw:Unload()
+noErrors("crowded tabs")
+
+--------------------------------------------------------------------------------
 section("live animation + leaks")
 --------------------------------------------------------------------------------
 

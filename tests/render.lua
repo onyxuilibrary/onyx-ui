@@ -84,6 +84,23 @@ elseif scene == "mobile" then
 	local w = Onyx:CreateWindow(options({ scale = 1 }))
 	demo(w)
 	gui = w._gui
+elseif scene == "crowded" then
+	-- lots of top tabs in a narrow window
+	local w = Onyx:CreateWindow(options({ subtitle = "lots of tabs", size = UDim2.fromOffset(628, 460) }))
+	for _, name in ipairs({ "Rage", "Anti-Aim", "Players", "Weapon", "Skins", "Visuals", "Feedback", "Player", "World", "HUD" }) do
+		w:CreateTab({ name = name })
+	end
+	local t = w:CreateTab({ name = "Misc" })
+	local runtime = t:CreateSection("Runtime")
+	runtime:CreateLabel("Executor: Volt")
+	runtime:CreateLabel("Bullet true | Weapon true | Camera true")
+	runtime:CreateButton({ name = "Unload" })
+	local theme = t:CreateSection("Theme")
+	theme:CreateDropdown({ name = "Preset config", options = { "Default", "Legit" }, value = "Default" })
+	theme:CreateToggle({ name = "Rainbow UI" })
+	M.flush()
+	w:Navigate("Misc")
+	gui = w._gui
 end
 M.flush()
 

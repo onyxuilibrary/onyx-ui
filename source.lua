@@ -2716,6 +2716,7 @@ function Tab:Select(noAnimation)
 	window:_closePopover()
 	self.page.Visible = true
 	self:_paintButton(true, noAnimation)
+	window:_revealTab(self)
 	if not noAnimation then
 		self.page.Position = UDim2.fromOffset(0, 6)
 		Tween(self.page, { Position = UDim2.new() }, 0.18)
@@ -3174,14 +3175,99 @@ function Window:_firstTab()
 	return best
 end
 
+-- Top tabs share the strip evenly when they fit, otherwise each one gets its own
+-- text width and the strip scrolls sideways.
 function Window:_layoutTabs()
 	if self.sidebar then
 		return
 	end
+	local list = self._tabList
 	local count = math.max(1, #self._tabs)
-	for _, tab in ipairs(self._tabs) do
-		tab.button.Size = UDim2.new(1 / count, 0, 1, 0)
+	local abs = list.AbsoluteSize
+	if abs.X <= 0 or abs.Y <= 0 then
+		list.CanvasSize = UDim2.new()
+		for _, tab in ipairs(self._tabs) do
+			tab.button.Size = UDim2.new(1 / count, 0, 1, 0)
+		end
+		return
 	end
+	-- AbsoluteSize and TextBounds include any UIScale, so work back to offsets
+	local factor = abs.Y / (TABSTRIP_HEIGHT - 1)
+	local available = abs.X / factor
+	local widths, total = {}, 0
+	for i, tab in ipairs(self._tabs) do
+		local width = 24
+		if tab._buttonLabel.Visible then
+			width = width + tab._buttonLabel.TextBounds.X / factor
+		end
+		if tab._buttonIcon then
+			width = width + 14 + (tab._buttonLabel.Visible and 6 or 0)
+		end
+		widths[i] = math.ceil(width)
+		total = total + widths[i]
+	end
+	local extra = 0
+	if total <= available then
+		extra = (available - total) / count
+		list.CanvasSize = UDim2.new()
+	else
+		list.CanvasSize = UDim2.fromOffset(total, 0)
+	end
+	for i, tab in ipairs(self._tabs) do
+		tab.button.Size = UDim2.new(0, widths[i] + extra, 1, 0)
+	end
+	if self._activeTab then
+		self:_revealTab(self._activeTab)
+	end
+	self:_updateTabArrows()
+end
+
+function Window:_tabScrollRange()
+	local list = self._tabList
+	local abs = list.AbsoluteSize
+	if abs.Y <= 0 then
+		return 0
+	end
+	local factor = abs.Y / (TABSTRIP_HEIGHT - 1)
+	return math.max(0, list.CanvasSize.X.Offset - abs.X / factor)
+end
+
+function Window:_scrollTabs(delta)
+	local list = self._tabList
+	if self.sidebar or not list then
+		return
+	end
+	local x = math.clamp(list.CanvasPosition.X + delta, 0, self:_tabScrollRange())
+	Tween(list, { CanvasPosition = Vector2.new(x, 0) }, 0.15)
+end
+
+function Window:_updateTabArrows()
+	if self.sidebar or not self._tabLeft then
+		return
+	end
+	local range = self:_tabScrollRange()
+	local x = self._tabList.CanvasPosition.X
+	self._tabLeft.Visible = range > 0 and x > 1
+	self._tabRight.Visible = range > 0 and x < range - 1
+end
+
+function Window:_revealTab(tab)
+	local list = self._tabList
+	if self.sidebar or list.CanvasSize.X.Offset <= 0 then
+		return
+	end
+	local left = tab.button.AbsolutePosition.X - list.AbsolutePosition.X
+	local right = left + tab.button.AbsoluteSize.X
+	local view = list.AbsoluteSize.X
+	local factor = list.AbsoluteSize.Y / (TABSTRIP_HEIGHT - 1)
+	local x = list.CanvasPosition.X
+	local margin = 18 * factor
+	if left < margin then
+		x = x + (left - margin) / factor
+	elseif right > view - margin then
+		x = x + (right - view + margin) / factor
+	end
+	list.CanvasPosition = Vector2.new(math.clamp(x, 0, self:_tabScrollRange()), 0)
 end
 
 function Window:CreateTab(props, icon)
@@ -3246,6 +3332,11 @@ function Window:CreateTab(props, icon)
 	end
 	self:_text(tab._buttonLabel, name or "")
 	tab._buttonLabel.Visible = name ~= nil and name ~= ""
+	if not self.sidebar then
+		self:_connect(tab._buttonLabel:GetPropertyChangedSignal("TextBounds"), function()
+			self:_layoutTabs()
+		end)
+	end
 
 	Hover(self, button, function()
 		if self._activeTab ~= tab then
@@ -4693,8 +4784,54 @@ function Onyx:CreateWindow(props)
 	else
 		local strip = window:_frame({ Name = "Tabs", Size = UDim2.new(1, 0, 0, TABSTRIP_HEIGHT), Position = UDim2.fromOffset(0, HEADER_HEIGHT), Parent = body }, { BackgroundColor3 = "Header" })
 		window:_frame({ Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), Parent = strip }, { BackgroundColor3 = "Border" })
-		window._tabList = window:_frame({ Size = UDim2.new(1, 0, 1, -1), BackgroundTransparency = 1, Parent = strip })
+		window._tabList = Create("ScrollingFrame", {
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 1, -1),
+			CanvasSize = UDim2.new(),
+			ScrollingDirection = Enum.ScrollingDirection.X,
+			ScrollBarThickness = 0,
+			Parent = strip,
+		})
 		List(window._tabList, 0, Enum.FillDirection.Horizontal)
+		window:_connect(window._tabList:GetPropertyChangedSignal("AbsoluteSize"), function()
+			window:_layoutTabs()
+		end)
+		window:_connect(window._tabList:GetPropertyChangedSignal("CanvasPosition"), function()
+			window:_updateTabArrows()
+		end)
+		window:_connect(window._tabList.InputChanged, function(input)
+			if input.UserInputType == Enum.UserInputType.MouseWheel then
+				window:_scrollTabs(-input.Position.Z * 60)
+			end
+		end)
+		-- little arrows that show up when the tabs don't all fit
+		local function tabArrow(text, side, step)
+			local arrow = Create("TextButton", {
+				Text = text,
+				TextSize = 14,
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
+				Size = UDim2.new(0, 18, 1, -1),
+				AnchorPoint = Vector2.new(side, 0),
+				Position = UDim2.fromScale(side, 0),
+				ZIndex = 3,
+				Visible = false,
+				Parent = strip,
+			})
+			window:_paint(arrow, { BackgroundColor3 = "Header", TextColor3 = "TextDim", FontFace = "Font" })
+			Hover(window, arrow, function()
+				window:_paint(arrow, { TextColor3 = "Accent" }, true)
+			end, function()
+				window:_paint(arrow, { TextColor3 = "TextDim" }, true)
+			end)
+			window:_connect(arrow.Activated, function()
+				window:_scrollTabs(step)
+			end)
+			return arrow
+		end
+		window._tabLeft = tabArrow("<", 0, -140)
+		window._tabRight = tabArrow(">", 1, 140)
 		contentTop = HEADER_HEIGHT + TABSTRIP_HEIGHT
 		window._pages = window:_frame({ Name = "Pages", Size = UDim2.new(1, 0, 1, -contentTop), Position = UDim2.fromOffset(0, contentTop), BackgroundTransparency = 1, Parent = body })
 	end
