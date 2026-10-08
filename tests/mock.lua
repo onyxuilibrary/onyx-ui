@@ -370,7 +370,7 @@ local Classes = {
 		ScrollingDirection = E("ScrollingDirection"), CanvasPosition = "Vector2", VerticalScrollBarInset = E("ScrollBarInset"),
 		ScrollingEnabled = "boolean", AbsoluteCanvasSize = "readonly", AbsoluteWindowSize = "readonly", ScrollBarImageTransparency = "number",
 	}), gui = true },
-	ScreenGui = { props = merge(P.Instance, { ResetOnSpawn = "boolean", ZIndexBehavior = E("ZIndexBehavior"), IgnoreGuiInset = "boolean", DisplayOrder = "number", Enabled = "boolean", ScreenInsets = E("ScreenInsets"), AbsoluteSize = "readonly" }), layer = true },
+	ScreenGui = { props = merge(P.Instance, { ResetOnSpawn = "boolean", ZIndexBehavior = E("ZIndexBehavior"), IgnoreGuiInset = "boolean", DisplayOrder = "number", Enabled = "boolean", ScreenInsets = E("ScreenInsets"), AbsoluteSize = "readonly", AbsolutePosition = "readonly" }), layer = true },
 	UIListLayout = { props = merge(P.Instance, { SortOrder = E("SortOrder"), Padding = "UDim", FillDirection = E("FillDirection"), HorizontalAlignment = E("HorizontalAlignment"), VerticalAlignment = E("VerticalAlignment"), Wraps = "boolean", AbsoluteContentSize = "readonly" }) },
 	UIPadding = { props = merge(P.Instance, { PaddingTop = "UDim", PaddingRight = "UDim", PaddingBottom = "UDim", PaddingLeft = "UDim" }) },
 	UIGradient = { props = merge(P.Instance, { Color = "ColorSequence", Transparency = "NumberSequence", Rotation = "number", Offset = "Vector2", Enabled = "boolean" }) },
@@ -414,6 +414,11 @@ local VIEW = Vector2.new(1280, 720)
 Mock.screenGuis = {}
 
 -- Simulates a resize / device rotation: every ScreenGui reports the new AbsoluteSize.
+-- the layout engine has no caching; freeze it while reading a finished scene (renderer)
+function Mock.freezeLayout(on)
+	Mock.layoutCache = on and { size = {}, pos = {} } or nil
+end
+
 function Mock.setViewport(size)
 	VIEW = size
 	for _, gui in ipairs(Mock.screenGuis) do
@@ -577,7 +582,17 @@ function absWidth(inst)
 	return w * uiScale(inst)
 end
 
+local absSizeRaw
 local function absSize(inst)
+	local cache = Mock.layoutCache
+	if cache then
+		local hit = cache.size[inst]
+		if not hit then hit = absSizeRaw(inst) cache.size[inst] = hit end
+		return hit
+	end
+	return absSizeRaw(inst)
+end
+function absSizeRaw(inst)
 	if isRoot(inst) then return VIEW end
 	local parent = rawget(inst, "__parent")
 	local ps = VIEW
@@ -594,8 +609,25 @@ local function absSize(inst)
 	return Vector2.new(w * k, h * k)
 end
 
+local absPosRaw
 local function absPos(inst)
-	if isRoot(inst) then return Vector2.new() end
+	local cache = Mock.layoutCache
+	if cache then
+		local hit = cache.pos[inst]
+		if not hit then hit = absPosRaw(inst) cache.pos[inst] = hit end
+		return hit
+	end
+	return absPosRaw(inst)
+end
+function absPosRaw(inst)
+	-- like the engine: AbsolutePosition is measured from below the 36px top bar,
+	-- so a ScreenGui that ignores the inset starts at y = -36
+	if isRoot(inst) then
+		if rawget(inst, "__className") == "ScreenGui" and rawget(inst, "__props").IgnoreGuiInset then
+			return Vector2.new(0, -36)
+		end
+		return Vector2.new()
+	end
 	local parent = rawget(inst, "__parent")
 	if not parent then return Vector2.new() end
 	local pp = absPos(parent)
@@ -834,7 +866,7 @@ local UIS = service("UserInputService", {
 	InputBegan = Signal.new(), InputChanged = Signal.new(), InputEnded = Signal.new(),
 	TouchEnabled = false, KeyboardEnabled = true, MouseEnabled = true,
 })
-function UIS:GetMouseLocation() return Mock.mouse end
+function UIS:GetMouseLocation() return Mock.mouse + Vector2.new(0, 36) end
 function UIS:GetFocusedTextBox() return Mock.focused end
 
 local TweenService = service("TweenService", {})
@@ -966,9 +998,14 @@ end
 
 local TextService = service("TextService", {})
 
+Mock.ping = 48.4
+local Stats = service("Stats", {
+	Network = { ServerStatsItem = { ["Data Ping"] = { GetValue = function() return Mock.ping end } } },
+})
+
 local services = {
 	UserInputService = UIS, TweenService = TweenService, RunService = RunService, HttpService = HttpService,
-	GuiService = GuiService, CoreGui = CoreGui, Players = Players, TextService = TextService,
+	GuiService = GuiService, CoreGui = CoreGui, Players = Players, TextService = TextService, Stats = Stats,
 }
 
 game = {
@@ -1015,7 +1052,7 @@ local function input(kind, keyCode, position)
 	return setmetatable({
 		UserInputType = Enum.UserInputType[kind],
 		KeyCode = keyCode or Enum.KeyCode.Unknown,
-		Position = position or Vector2.new(Mock.mouse.X, Mock.mouse.Y - 36),
+		Position = position or Vector2.new(Mock.mouse.X, Mock.mouse.Y),
 		UserInputState = Enum.UserInputState.Begin,
 	}, { __typeof = "InputObject" })
 end
@@ -1107,10 +1144,10 @@ function Mock.typeInto(box, text, enter)
 	Mock.unfocus(enter ~= false)
 end
 
--- Touch: each finger is one persistent InputObject (as in Roblox). Positions are given in
--- screen space; InputObject.Position excludes the 36px top inset, like the engine.
+-- Touch: each finger is one persistent InputObject (as in Roblox). Positions are in
+-- AbsolutePosition space, which already excludes the 36px top inset, like the engine.
 function Mock.finger(at)
-	local obj = input("Touch", nil, Vector2.new(at.X, at.Y - 36))
+	local obj = input("Touch", nil, Vector2.new(at.X, at.Y))
 	return obj
 end
 
@@ -1121,7 +1158,7 @@ function Mock.touchBegin(finger, gui)
 end
 
 function Mock.touchMove(finger, to)
-	finger.Position = Vector2.new(to.X, to.Y - 36)
+	finger.Position = Vector2.new(to.X, to.Y)
 	UIS.InputChanged:Fire(finger, false)
 	Mock.flush()
 end

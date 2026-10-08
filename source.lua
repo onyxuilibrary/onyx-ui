@@ -6,7 +6,7 @@
 ]]
 
 local Onyx = {
-	Version = "1.1.0",
+	Version = "1.2.0",
 	Windows = {},
 }
 
@@ -223,12 +223,19 @@ local function IconImage(icon)
 	return nil
 end
 
+-- Pointer position in the same space as AbsolutePosition (below the top bar).
+-- GetMouseLocation counts the top bar, touch positions already don't.
 local function PointerPosition(input)
 	if input and input.UserInputType == Enum.UserInputType.Touch then
-		local inset = GuiService:GetGuiInset()
-		return Vector2.new(input.Position.X, input.Position.Y) + inset
+		return Vector2.new(input.Position.X, input.Position.Y)
 	end
-	return UserInputService:GetMouseLocation()
+	return UserInputService:GetMouseLocation() - GuiService:GetGuiInset()
+end
+
+-- AbsolutePosition doesn't include the top bar but our ScreenGui ignores it, so
+-- anything positioned from AbsolutePosition has to go through this first
+local function LocalPosition(guiObject, root)
+	return guiObject.AbsolutePosition - root.AbsolutePosition
 end
 
 local function IsTouchDevice()
@@ -253,6 +260,79 @@ local function SetClipboard(text)
 		return false
 	end
 	return (pcall(setter, text))
+end
+
+local function ExecutorName()
+	if type(identifyexecutor) == "function" then
+		local ok, name = pcall(identifyexecutor)
+		if ok and name then
+			return tostring(name)
+		end
+	end
+	return "Unknown"
+end
+
+-- round trip ping in ms, or nil if the game won't tell us
+local function GetPing()
+	local ok, value = pcall(function()
+		return Service("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+	end)
+	if ok and type(value) == "number" then
+		return value
+	end
+	ok, value = pcall(function()
+		return LocalPlayer:GetNetworkPing() * 2000
+	end)
+	if ok and type(value) == "number" then
+		return value
+	end
+	return nil
+end
+
+local function ClockText()
+	local t = os.date("*t")
+	return string.format("%02d:%02d:%02d", t.hour, t.min, t.sec)
+end
+
+-- accepts "https://discord.gg/abc", "discord.com/invite/abc" or just "abc"
+local function DiscordCode(invite)
+	invite = tostring(invite or "")
+	return string.match(invite, "invite/([%w%-_]+)") or string.match(invite, "%.gg/([%w%-_]+)") or string.match(invite, "^([%w%-_]+)$")
+end
+
+local DISCORD_BLURPLE = Color3.fromRGB(88, 101, 242)
+
+-- the discord logo drawn with frames, so there's no image asset to break
+local function DiscordIcon(size, parent)
+	local badge = Create("Frame", {
+		Name = "DiscordIcon",
+		BackgroundColor3 = DISCORD_BLURPLE,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(size, size),
+		Parent = parent,
+	})
+	Create("UICorner", { CornerRadius = UDim.new(0.25, 0), Parent = badge })
+	local face = Create("Frame", {
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.54),
+		Size = UDim2.fromScale(0.66, 0.46),
+		Parent = badge,
+	})
+	Create("UICorner", { CornerRadius = UDim.new(0.45, 0), Parent = face })
+	for _, x in ipairs({ 0.32, 0.68 }) do
+		local eye = Create("Frame", {
+			BackgroundColor3 = DISCORD_BLURPLE,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(x, 0.5),
+			Size = UDim2.fromScale(0.2, 0.36),
+			Parent = face,
+		})
+		Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = eye })
+	end
+	return badge
 end
 
 --------------------------------------------------------------------------------
@@ -711,8 +791,10 @@ local function NewElement(class, holder, p, kind, rowHeight, labelInset)
 	List(stack, 2)
 	self.stack = stack
 
-	-- indent so labels line up with toggle text
-	if (labelInset or 0) == 0 and holder.kind ~= "row" and kind ~= "Divider" and kind ~= "SubHeader" then
+	-- indent so labels line up with toggle text. buttons and plain text stay full
+	-- width, otherwise they sit lopsided in the section
+	local flush = { Divider = true, SubHeader = true, Button = true, Text = true, StatusRow = true }
+	if (labelInset or 0) == 0 and holder.kind ~= "row" and not flush[kind] then
 		Padding(stack, 0, 0, 0, GUTTER)
 	end
 
@@ -2381,6 +2463,9 @@ function Elements.StatusRow(holder, p)
 end
 
 function StatusRow:Set(status)
+	if not status and self._public then
+		status = { text = "Unknown", color = RGB(140, 140, 140) }
+	end
 	self.root.Visible = status ~= nil
 	if not status then
 		return
@@ -2394,6 +2479,37 @@ function StatusRow:Set(status)
 	self._dot.Position = UDim2.new(1, -(self._value.TextBounds.X + 6), 0.5, 0)
 	self.description = status.note
 	self:_setDescription(status.note)
+end
+
+-- section:CreateStatus() - the live status row, anywhere you want it. pass a state to set it too
+function Elements.Status(holder, p)
+	local window = holder.window
+	local self = Elements.StatusRow(holder, { name = Pick(p, "Status", "name", "title") })
+	self._public = true
+	window._statusRows = window._statusRows or {}
+	table.insert(window._statusRows, self)
+	local state = Pick(p, nil, "state", "status", "value")
+	if state ~= nil then
+		window:SetStatus(state, Pick(p, nil, "note", "description"))
+	else
+		self:Set(window.status)
+	end
+	return self
+end
+
+-- section:CreateDiscord({ invite = "discord.gg/abc" }) - button with the discord logo
+function Elements.Discord(holder, p)
+	local window = holder.window
+	local invite = Pick(p, window.discord, "invite", "link", "url", "code")
+	local self = Elements.Button(holder, {
+		name = Pick(p, "Join our Discord", "name", "title"),
+		callback = function()
+			window:OpenDiscord(invite)
+		end,
+	})
+	DiscordIcon(14, self._fill).Position = UDim2.new(0, 5, 0.5, -7)
+	self.invite = invite
+	return self
 end
 
 --------------------------------------------------------------------------------
@@ -2436,6 +2552,8 @@ local function DefineCreators(target, resolve)
 	target.CreateConsole = creator("Console")
 	target.CreateText = creator("Text")
 	target.CreateDivider = creator("Divider")
+	target.CreateStatus = creator("Status")
+	target.CreateDiscord = creator("Discord")
 	target.CreateParagraph = function(self, props)
 		local p = LowerKeys(props)
 		return target.CreateText(self, { name = Pick(p, nil, "title", "name"), text = Pick(p, nil, "content", "text") })
@@ -2986,7 +3104,7 @@ function Window:_openPopover(frame, anchor, onClose, alignRight)
 		Create("UIScale", { Scale = self._scale, Parent = frame })
 	end
 	frame.Parent = self._overlay
-	local position, size = anchor.AbsolutePosition, anchor.AbsoluteSize
+	local position, size = LocalPosition(anchor, self._overlay), anchor.AbsoluteSize
 	local viewport = self._gui.AbsoluteSize
 	local x = alignRight and (position.X + size.X - frame.AbsoluteSize.X) or position.X
 	local y = position.Y + size.Y + 3
@@ -3363,18 +3481,21 @@ function Window:CreateTab(props, icon)
 		AutomaticCanvasSize = AUTO_Y,
 		ScrollBarThickness = 2,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		VerticalScrollBarInset = Enum.ScrollBarInset.Always,
+		VerticalScrollBarInset = Enum.ScrollBarInset.None,
 		Visible = false,
 		Parent = self._pages,
 	})
 	self:_paint(page, { ScrollBarImageColor3 = "Accent" })
-	Padding(page, 8, 6, 8, 8)
+	-- padding lives on a plain frame: UIPadding on a ScrollingFrame doesn't
+	-- reliably apply the right side, which pushed the right column off the edge
+	local pageContent = self:_frame({ Name = "Content", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO_Y, BackgroundTransparency = 1, Parent = page })
+	Padding(pageContent, 8)
 	self:_connect(page:GetPropertyChangedSignal("CanvasPosition"), function()
 		self:_closePopover()
 	end)
 	tab.page = page
 
-	local columnHolder = self:_frame({ Name = "Columns", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO_Y, BackgroundTransparency = 1, Parent = page })
+	local columnHolder = self:_frame({ Name = "Columns", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO_Y, BackgroundTransparency = 1, Parent = pageContent })
 	List(columnHolder, 8, Enum.FillDirection.Horizontal)
 	local columnCount = math.clamp(tonumber(Pick(p, 2, "columns")) or 2, 1, 3)
 	for i = 1, columnCount do
@@ -4030,6 +4151,17 @@ function Window:_buildSettings()
 			end
 		end,
 	})
+	self._infoToggle = menu:CreateToggle({
+		name = "Info bar",
+		description = "FPS, ping, executor and time",
+		flag = "OnyxInfoBar",
+		value = self._infoBarSpec ~= nil and self._infoBarSpec ~= false,
+		callback = function(on)
+			if on ~= (self.infoBarVisible == true) then
+				self:SetInfoBar(on)
+			end
+		end,
+	})
 	menu:CreateButton({
 		name = "Unload",
 		callback = function()
@@ -4114,14 +4246,10 @@ function Window:_buildSettings()
 	local info = tab:CreateSection({ name = "About", side = self._config and "right" or "left" })
 	self._statusRow = Elements.StatusRow(info, { name = "Status" })
 	self._statusRow:Set(self.status)
-	local executor = "Unknown"
-	if type(identifyexecutor) == "function" then
-		local ok, name = pcall(identifyexecutor)
-		if ok and name then
-			executor = tostring(name)
-		end
+	info:CreateText({ text = "Onyx " .. Onyx.Version .. "\nExecutor: " .. ExecutorName() })
+	if self.discord then
+		info:CreateDiscord({ invite = self.discord })
 	end
-	info:CreateText({ text = "Onyx " .. Onyx.Version .. "\nExecutor: " .. executor })
 end
 
 -- launcher: always visible on mobile, only while hidden on pc
@@ -4153,7 +4281,7 @@ function Window:_fitToScreen()
 	self._uiScale.Scale = scale
 	local main = self._main
 	if main.AnchorPoint.X == 0 then
-		local position, size = main.AbsolutePosition, main.AbsoluteSize
+		local position, size = LocalPosition(main, self._gui), main.AbsoluteSize
 		local x = math.clamp(position.X, 0, math.max(0, screen.X - size.X))
 		local y = math.clamp(position.Y, 0, math.max(0, screen.Y - size.Y))
 		main.Position = UDim2.fromOffset(x, y)
@@ -4198,9 +4326,9 @@ function Window:SetStatus(state, note)
 			self._statusTag:Remove()
 			self._statusTag = nil
 		end
-		if self._statusRow then
-			self._statusRow:Set(nil)
-		end
+		self:_eachStatusRow(function(row)
+			row:Set(nil)
+		end)
 		return
 	end
 	local status = ResolveStatus(state, note)
@@ -4212,10 +4340,151 @@ function Window:SetStatus(state, note)
 			self._statusTag = self:CreateTag({ text = string.lower(status.text), color = status.color, order = -1 })
 		end
 	end
-	if self._statusRow then
-		self._statusRow:Set(status)
-	end
+	self:_eachStatusRow(function(row)
+		row:Set(status)
+	end)
 	return status
+end
+
+function Window:_eachStatusRow(fn)
+	if self._statusRow then
+		fn(self._statusRow)
+	end
+	for i = #(self._statusRows or {}), 1, -1 do
+		local row = self._statusRows[i]
+		if row.root.Parent then
+			fn(row)
+		else
+			table.remove(self._statusRows, i)
+		end
+	end
+end
+
+-- Discord -------------------------------------------------------------------------
+
+-- copies the invite and, if the executor can, pops it open in the discord app
+function Window:OpenDiscord(invite)
+	local code = DiscordCode(invite or self.discord)
+	if not code then
+		warn("[Onyx] no discord invite set")
+		return false
+	end
+	local link = "https://discord.gg/" .. code
+	local copied = SetClipboard(link)
+	local send = (syn and syn.request) or http_request or request or (fluxus and fluxus.request)
+	if type(send) == "function" then
+		task.spawn(pcall, send, {
+			Url = "http://127.0.0.1:6463/rpc?v=1",
+			Method = "POST",
+			Headers = { ["Content-Type"] = "application/json", Origin = "https://discord.com" },
+			Body = HttpService:JSONEncode({ cmd = "INVITE_BROWSER", nonce = HttpService:GenerateGUID(false), args = { code = code } }),
+		})
+	end
+	self:Notify({ title = "Discord", content = copied and ("Invite copied: " .. link) or link, duration = 5 })
+	return copied
+end
+
+-- Info bar --------------------------------------------------------------------------
+
+local InfoFields = { "fps", "ping", "executor", "time" }
+
+function Window:_buildInfoBar(spec)
+	local o = type(spec) == "table" and LowerKeys(spec) or {}
+	local fields = Pick(o, InfoFields, "fields", "show")
+	local corner = string.lower(tostring(Pick(o, "top-right", "position", "corner")))
+	local right = string.find(corner, "right") ~= nil
+	local bottom = string.find(corner, "bottom") ~= nil
+	local topInset = GuiService:GetGuiInset().Y
+
+	local bar, fill = self:_rim({
+		Name = "InfoBar",
+		Size = UDim2.new(),
+		AnchorPoint = Vector2.new(right and 1 or 0, bottom and 1 or 0),
+		Position = UDim2.new(right and 1 or 0, right and -10 or 10, bottom and 1 or 0, bottom and -10 or topInset + 10),
+		ZIndex = 14,
+		Parent = self._gui,
+	}, "Panel")
+	bar.AutomaticSize = AUTO_XY
+	fill.Parent.AutomaticSize = AUTO_XY
+	fill.Parent.Size = UDim2.new()
+	fill.AutomaticSize = AUTO_XY
+	fill.Size = UDim2.new()
+	List(fill, 0)
+	self:_frame({ Size = UDim2.new(1, 0, 0, 1), LayoutOrder = 1, Parent = fill }, { BackgroundColor3 = "Accent" })
+	local row = self:_frame({ Size = UDim2.new(), AutomaticSize = AUTO_XY, BackgroundTransparency = 1, LayoutOrder = 2, Parent = fill })
+	Padding(row, 4, 8, 4, 8)
+	List(row, 0, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center })
+	local title = self:_label({ Text = tostring(Pick(o, self.name, "title", "name")), Size = UDim2.new(), AutomaticSize = AUTO_XY, TextSize = 12, LayoutOrder = 1, Parent = row }, "Accent")
+	local info = self:_label({ Size = UDim2.new(), AutomaticSize = AUTO_XY, TextSize = 12, LayoutOrder = 2, Parent = row }, "Text")
+	self._infoBar, self._infoText, self._infoTitle = bar, info, title
+
+	local executor = ExecutorName()
+	local frames, since = 0, os.clock()
+	local fps = 0
+	local function refresh()
+		local parts = {}
+		for _, field in ipairs(fields) do
+			field = string.lower(tostring(field))
+			if field == "fps" then
+				table.insert(parts, fps .. " fps")
+			elseif field == "ping" then
+				local ping = GetPing()
+				table.insert(parts, ping and (math.floor(ping + 0.5) .. " ms") or "-- ms")
+			elseif field == "executor" then
+				table.insert(parts, executor)
+			elseif field == "time" then
+				table.insert(parts, ClockText())
+			elseif field == "player" and LocalPlayer then
+				table.insert(parts, LocalPlayer.DisplayName)
+			end
+		end
+		info.Text = "  |  " .. table.concat(parts, "  |  ")
+	end
+	refresh()
+	self:_connect(RunService.RenderStepped, function()
+		frames = frames + 1
+		local now = os.clock()
+		if now - since >= 0.5 then
+			fps = math.floor(frames / (now - since) + 0.5)
+			frames, since = 0, now
+			if bar.Visible then
+				refresh()
+			end
+		end
+	end)
+
+	-- drag it wherever
+	local dragStart, dragOrigin
+	self:_draggable(nil, self:_hitbox(bar), function(position)
+		if not dragStart then
+			dragStart, dragOrigin = position, LocalPosition(bar, self._gui)
+			bar.AnchorPoint = Vector2.new(0, 0)
+		end
+		local delta = position - dragStart
+		local screen, size = self._gui.AbsoluteSize, bar.AbsoluteSize
+		local x, y = dragOrigin.X + delta.X, dragOrigin.Y + delta.Y
+		if screen.X > 0 then
+			x = math.clamp(x, 0, math.max(0, screen.X - size.X))
+			y = math.clamp(y, 0, math.max(0, screen.Y - size.Y))
+		end
+		bar.Position = UDim2.fromOffset(x, y)
+	end, function()
+		dragStart = nil
+	end)
+end
+
+function Window:SetInfoBar(visible)
+	visible = visible ~= false
+	if visible and not self._infoBar then
+		self:_buildInfoBar(self._infoBarSpec)
+	end
+	if self._infoBar then
+		self._infoBar.Visible = visible and not self._keyLocked
+	end
+	self.infoBarVisible = visible
+	if self._infoToggle and self._infoToggle.value ~= visible then
+		self._infoToggle:Set(visible)
+	end
 end
 
 function Window:GetStatus()
@@ -4607,6 +4876,12 @@ function Onyx:CreateWindow(props)
 	window._userScale = tonumber(Pick(p, nil, "scale"))
 	window._scale = 1
 	window._showStatusTag = Pick(p, true, "statustag") ~= false
+	local discord = Pick(p, nil, "discord", "discordinvite")
+	if type(discord) == "table" then
+		discord = Pick(LowerKeys(discord), nil, "invite", "link", "url", "code")
+	end
+	window.discord = discord
+	window._infoBarSpec = Pick(p, nil, "infobar", "watermark")
 
 	local keyOptions = Pick(p, nil, "keysystem")
 	if keyOptions == true then
@@ -4682,7 +4957,8 @@ function Onyx:CreateWindow(props)
 	local header = window:_frame({ Name = "Header", Size = UDim2.new(1, 0, 0, HEADER_HEIGHT - 2), Position = UDim2.fromOffset(0, 2), Parent = body }, { BackgroundColor3 = "Header" })
 	window:_frame({ Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), Parent = header }, { BackgroundColor3 = "Border" })
 
-	local titleRow = window:_frame({ Size = UDim2.new(1, window._mobile and -76 or -60, 1, 0), Position = UDim2.fromOffset(10, 0), BackgroundTransparency = 1, Parent = header })
+	local headerButtons = window.discord and 3 or 2
+	local titleRow = window:_frame({ Size = UDim2.new(1, -headerButtons * (window._mobile and 30 or 22) - 16, 1, 0), Position = UDim2.fromOffset(10, 0), BackgroundTransparency = 1, Parent = header })
 	List(titleRow, 6, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center })
 	local windowIcon = IconImage(Pick(p, nil, "icon"))
 	if windowIcon then
@@ -4734,6 +5010,22 @@ function Onyx:CreateWindow(props)
 	window:_connect(window._minimiseButton.Activated, function()
 		window:ToggleMinimise()
 	end)
+	if window.discord then
+		local discordButton = headerButton("", 3)
+		local iconSize = window._mobile and 16 or 13
+		local icon = DiscordIcon(iconSize, discordButton)
+		icon.Position = UDim2.new(0.5, -iconSize / 2, 0.5, -iconSize / 2)
+		icon.ZIndex = 5
+		for _, d in ipairs(icon:GetDescendants()) do
+			if d:IsA("GuiObject") then
+				d.ZIndex = 5
+			end
+		end
+		window._discordButton = discordButton
+		window:_connect(discordButton.Activated, function()
+			window:OpenDiscord()
+		end)
+	end
 
 	-- Navigation and pages
 	local contentTop = HEADER_HEIGHT
@@ -4875,7 +5167,7 @@ function Onyx:CreateWindow(props)
 	local dragStart, dragOrigin
 	window:_draggable(nil, header, function(position)
 		if not dragStart then
-			dragStart, dragOrigin = position, main.AbsolutePosition
+			dragStart, dragOrigin = position, LocalPosition(main, gui)
 			-- swap the centre anchor for top-left before moving
 			main.AnchorPoint = Vector2.new(0, 0)
 			main.Position = UDim2.fromOffset(dragOrigin.X, dragOrigin.Y)
@@ -4947,7 +5239,7 @@ function Onyx:CreateWindow(props)
 	local pressStart, pressOrigin, pressMoved
 	window:_draggable(nil, window:_hitbox(pill), function(position)
 		if not pressStart then
-			pressStart, pressOrigin, pressMoved = position, pill.AbsolutePosition, false
+			pressStart, pressOrigin, pressMoved = position, LocalPosition(pill, gui), false
 		end
 		local delta = position - pressStart
 		if not pressMoved and delta.Magnitude > 6 then
@@ -5115,6 +5407,10 @@ function Onyx:CreateWindow(props)
 		end
 		window._keyLocked = false
 		window:Show()
+	end
+
+	if window._infoBarSpec or window.infoBarVisible then
+		window:SetInfoBar(true)
 	end
 
 	local changelog = Pick(p, nil, "changelog")

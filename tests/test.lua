@@ -873,7 +873,7 @@ eq(mw._overlay:FindFirstChild("DropdownList"), nil, "tap outside closes")
 -- Rotation to portrait refits
 M.setViewport(Vector2.new(390, 844))
 check(math.abs(mw._scale - (390 - 16) / 580) < 1e-6, "rotation rescales to the new width (" .. mw._scale .. ")")
-local mp, ms = mw._main.AbsolutePosition, mw._main.AbsoluteSize
+local mp, ms = mw._main.AbsolutePosition - mw._gui.AbsolutePosition, mw._main.AbsoluteSize
 check(mp.X >= -0.5 and mp.Y >= -0.5, "window kept on screen after rotation")
 
 -- Explicit overrides
@@ -1092,6 +1092,7 @@ noErrors("changelog")
 --------------------------------------------------------------------------------
 section("crowded tab strip")
 --------------------------------------------------------------------------------
+do
 
 local cw = Onyx:CreateWindow({ name = "Crowded", size = UDim2.fromOffset(628, 460) })
 local crowd = {}
@@ -1129,6 +1130,109 @@ end
 check(math.abs(filled - fw._tabList.AbsoluteSize.X) <= 2, "few tabs: fill the whole strip")
 fw:Unload()
 noErrors("crowded tabs")
+end
+
+--------------------------------------------------------------------------------
+section("dragging stays put")
+--------------------------------------------------------------------------------
+do
+
+-- the gui ignores the top bar but AbsolutePosition doesn't, so a naive drag jumps up
+local dw = Onyx:CreateWindow({ name = "Drag" })
+dw:CreateTab({ name = "Main" })
+M.flush()
+local dHeader = M.find(dw._main, function(d) return d.Name == "Header" end)
+local dStart = M.center(dHeader)
+local dBefore = dw._main.AbsolutePosition
+M.drag(dHeader, dStart, dStart, 1)
+local dAfter = dw._main.AbsolutePosition
+check(math.abs(dAfter.X - dBefore.X) < 1 and math.abs(dAfter.Y - dBefore.Y) < 1, "grabbing the header doesn't move the window (" .. tostring(dAfter.Y - dBefore.Y) .. ")")
+M.drag(dHeader, dStart, Vector2.new(dStart.X + 30, dStart.Y + 25))
+local dMoved = dw._main.AbsolutePosition
+check(math.abs(dMoved.X - dBefore.X - 30) < 1 and math.abs(dMoved.Y - dBefore.Y - 25) < 1, "mouse drag moves by exactly the mouse delta")
+-- dropdown lists open right under their box
+local dSec = dw._tabs[1]:CreateSection("S")
+local dDrop = dSec:CreateDropdown({ name = "Pick", options = { "a", "b" } })
+M.flush()
+M.click(hitbox(dDrop._box))
+local dList = dw._overlay:FindFirstChild("DropdownList")
+check(dList ~= nil, "dropdown opened")
+if dList then
+	local gap = dList.AbsolutePosition.Y - (dDrop._box.AbsolutePosition.Y + dDrop._box.AbsoluteSize.Y)
+	check(gap >= 0 and gap < 8, "dropdown list sits under its box (gap " .. gap .. ")")
+end
+dw:Unload()
+noErrors("dragging")
+end
+
+--------------------------------------------------------------------------------
+section("status element, discord, info bar")
+--------------------------------------------------------------------------------
+do
+
+local xw = Onyx:CreateWindow({ name = "Extras", discord = "https://discord.gg/abc123", infoBar = true })
+local xt = xw:CreateTab({ name = "Settings" })
+local xs = xt:CreateSection("Runtime")
+local xStatus = xs:CreateStatus()
+M.flush()
+check(xStatus.root.Visible, "status row shows before any status is set")
+eq(xStatus._value.Text, "UNKNOWN", "no status yet")
+xw:SetStatus("patched", "down for now")
+eq(xStatus._value.Text, "PATCHED", "status row follows SetStatus")
+eq(xStatus.description, "down for now", "status note shown")
+local xStatus2 = xs:CreateStatus({ name = "Script", state = "working" })
+eq(xStatus._value.Text, "WORKING", "CreateStatus with a state sets it for every row")
+eq(xStatus2._label.Text, "Script", "custom status label")
+check(xw._statusTag ~= nil, "header tag added too")
+
+-- discord
+check(xw._discordButton ~= nil, "discord button in the header")
+check(M.find(xw._discordButton, function(d) return d.Name == "DiscordIcon" end) ~= nil, "header button has the discord logo")
+M.clipboard = nil
+M.click(xw._discordButton)
+eq(M.clipboard, "https://discord.gg/abc123", "header button copies the invite")
+check(xw._notifyList:FindFirstChild("Notification") ~= nil, "discord notification shown")
+local xd = xs:CreateDiscord({ invite = "discord.com/invite/other-1" })
+M.flush()
+check(M.find(xd.root, function(d) return d.Name == "DiscordIcon" end) ~= nil, "discord element has the logo")
+M.click(hitbox(xd._fill.Parent))
+eq(M.clipboard, "https://discord.gg/other-1", "element copies its own invite")
+local xd2 = xs:CreateDiscord()
+M.click(hitbox(xd2._fill.Parent))
+eq(M.clipboard, "https://discord.gg/abc123", "element falls back to the window invite")
+check(M.find(xw._settingsTab.page, function(d) return d.Name == "DiscordIcon" end) ~= nil, "discord row in the built-in settings")
+
+-- info bar
+check(xw._infoBar ~= nil and xw._infoBar.Visible, "info bar shown")
+M.advance(1)
+local infoText = xw._infoText.Text
+check(string.find(infoText, "%d+ fps") ~= nil, "fps shown (" .. infoText .. ")")
+check(string.find(infoText, "48 ms", 1, true) ~= nil, "ping shown")
+check(string.find(infoText, "MockExec", 1, true) ~= nil, "executor shown")
+check(string.find(infoText, "%d%d:%d%d:%d%d") ~= nil, "time shown")
+eq(xw._infoTitle.Text, "Extras", "info bar title")
+xw:Hide()
+check(xw._infoBar.Visible, "info bar stays when the menu is hidden")
+xw:Show()
+check(xw._infoToggle.value, "settings toggle reflects the bar")
+M.click(hitbox(xw._infoToggle.row))
+check(not xw._infoBar.Visible, "settings toggle hides the bar")
+xw:SetInfoBar(true)
+check(xw._infoBar.Visible and xw._infoToggle.value, "SetInfoBar shows it and syncs the toggle")
+local ib = xw._infoBar
+local ibStart = M.center(ib)
+local ibBefore = ib.AbsolutePosition
+M.drag(hitbox(ib), ibStart, Vector2.new(ibStart.X - 50, ibStart.Y + 40))
+check(math.abs(ib.AbsolutePosition.X - ibBefore.X + 50) < 1 and math.abs(ib.AbsolutePosition.Y - ibBefore.Y - 40) < 1, "info bar drags without jumping")
+xw:Unload()
+
+local nw = Onyx:CreateWindow({ name = "Plain" })
+M.flush()
+eq(nw._infoBar, nil, "no info bar unless asked")
+eq(nw._discordButton, nil, "no discord button unless asked")
+nw:Unload()
+noErrors("extras")
+end
 
 --------------------------------------------------------------------------------
 section("live animation + leaks")

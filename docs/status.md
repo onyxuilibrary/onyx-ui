@@ -80,6 +80,17 @@ window:SetStatus(nil)            -- hide it
 print(window:GetStatus().state)  -- "patched"
 ```
 
+## In your own settings tab
+
+If you made your own settings tab (or turned the built-in one off), one line adds the status row:
+
+```lua
+local section = mySettings:CreateSection("Runtime")
+section:CreateStatus()
+```
+
+It updates by itself whenever the status changes, including from `statusUrl`. Pass `state` to set the status at the same time: `section:CreateStatus({ state = "working", note = "all good" })`.
+
 ## Other options
 
 - `statusTag = false` hides the pill next to the title (it still shows in settings)

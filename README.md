@@ -55,6 +55,8 @@ There's a bigger example covering everything in [example.lua](example.lua).
 - key system
 - script status (working / updating / patched) shown in the header and settings. Point it at a text file and you can flip it to patched without updating your script, see [status](docs/status.md)
 - notice and changelog popups when the script runs
+- info bar with fps, ping, executor and the time
+- discord button with the discord logo (copies the invite and opens it in discord)
 - notifications, toasts and popups
 - a settings tab with menu key, theme, configs and unload built in
 - mobile: launcher button, scales to fit the screen, multi-touch safe sliders

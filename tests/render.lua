@@ -33,7 +33,7 @@ local function demo(window)
 	return aim, general, other
 end
 
-local base = { name = "onyx", status = "working", configuration = { fileName = "demo" } }
+local base = { name = "onyx", status = "working", configuration = { fileName = "demo" }, discord = "discord.gg/example", infoBar = true }
 local function options(extra)
 	local t = {}
 	for k, v in pairs(base) do t[k] = v end
@@ -86,7 +86,7 @@ elseif scene == "mobile" then
 	gui = w._gui
 elseif scene == "crowded" then
 	-- lots of top tabs in a narrow window
-	local w = Onyx:CreateWindow(options({ subtitle = "lots of tabs", size = UDim2.fromOffset(628, 460) }))
+	local w = Onyx:CreateWindow(options({ subtitle = "lots of tabs", size = UDim2.fromOffset(628, 460), discord = "discord.gg/example", infoBar = true }))
 	for _, name in ipairs({ "Rage", "Anti-Aim", "Players", "Weapon", "Skins", "Visuals", "Feedback", "Player", "World", "HUD" }) do
 		w:CreateTab({ name = name })
 	end
@@ -94,6 +94,8 @@ elseif scene == "crowded" then
 	local runtime = t:CreateSection("Runtime")
 	runtime:CreateLabel("Executor: Volt")
 	runtime:CreateLabel("Bullet true | Weapon true | Camera true")
+	runtime:CreateStatus()
+	runtime:CreateDiscord()
 	runtime:CreateButton({ name = "Unload" })
 	local theme = t:CreateSection("Theme")
 	theme:CreateDropdown({ name = "Preset config", options = { "Default", "Legit" }, value = "Default" })
@@ -104,14 +106,18 @@ elseif scene == "crowded" then
 end
 M.flush()
 
+M.advance(1) -- lets the info bar count some frames
 -- Serialise
+M.freezeLayout(true)
 local nodes = {}
 local function color(c, t) return { math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5), 1 - (t or 0) } end
 
+-- AbsolutePosition starts below the top bar; draw in real screen space
+local screenOrigin = gui.AbsolutePosition
 local function visit(inst, clip)
 	if inst.__class.gui then
 		if inst.Visible == false then return end
-		local p, s = inst.AbsolutePosition, inst.AbsoluteSize
+		local p, s = inst.AbsolutePosition - screenOrigin, inst.AbsoluteSize
 		local node = { x = p.X, y = p.Y, w = s.X, h = s.Y, clip = clip }
 		node.bg = color(inst.BackgroundColor3, inst.BackgroundTransparency)
 		local grad = inst:FindFirstChildOfClass("UIGradient")

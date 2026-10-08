@@ -29,6 +29,8 @@ local window = Onyx:CreateWindow({
 | `statusUrl` | | link to a text file with the status, so you can change it without updating the script |
 | `statusRefresh` | | re-check `statusUrl` every N seconds while the menu is open |
 | `statusTag` | `true` | show the status pill next to the title |
+| `discord` | | invite link or code. Adds a discord button to the title bar and settings |
+| `infoBar` | | `true` or a table: little bar with fps, ping, executor and time, see below |
 | `keySystem` | | key prompt before the menu opens, see [key system](key-system.md) |
 | `notice` | | popup shown when the script runs, see [messages](messages.md) |
 | `changelog` | | changelog shown when the script runs |
@@ -54,6 +56,8 @@ window:ToggleMinimise()                  -- collapses to just the title bar
 window:Navigate("Settings")              -- tab handle or name
 
 window:SetStatus("updating", "fixing aimbot")
+window:SetInfoBar(false)                 -- hide / show the info bar
+window:OpenDiscord()                     -- same as clicking the discord button
 window:ChangeTheme("ember")
 window:SetProfile("premium")
 
@@ -90,9 +94,40 @@ Added automatically unless you pass `settingsTab = false`. It has:
 
 - menu key bind
 - theme picker
+- info bar on/off
 - unload button (asks first)
 - configurations: name box, saved list, save / load / delete / refresh (only if `configuration` is set)
-- about: script status, library version, executor name
+- about: script status, library version, executor name, discord button (if `discord` is set)
+
+## Info bar
+
+The little bar in the top right with your hub name, fps, ping, executor and the time. It stays up when the menu is hidden, and you can drag it anywhere.
+
+```lua
+Onyx:CreateWindow({ name = "my hub", infoBar = true })
+
+-- or pick what it shows
+Onyx:CreateWindow({
+	name = "my hub",
+	infoBar = {
+		title = "my hub v2",                                  -- defaults to the window name
+		fields = { "fps", "ping", "executor", "time", "player" }, -- any order, leave out what you don't want
+		position = "top-left",                                -- top-right (default), top-left, bottom-left, bottom-right
+	},
+})
+```
+
+There's also a toggle for it in the settings tab, and it gets saved with configs.
+
+## Discord
+
+```lua
+Onyx:CreateWindow({ name = "my hub", discord = "https://discord.gg/yourcode" })
+```
+
+That puts a discord logo button in the title bar and a "Join our Discord" button in settings. Clicking either copies the invite and, on executors that support it, opens the invite straight in the discord app. `discord.gg/code`, `discord.com/invite/code` and just `code` all work.
+
+Want the button somewhere else? Use [`section:CreateDiscord()`](elements.md#discord).
 
 ## Translations
 

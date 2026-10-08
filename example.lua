@@ -8,6 +8,9 @@ local window = Onyx:CreateWindow({
 	toggleKey = Enum.KeyCode.RightShift,
 	configuration = { autoSave = true, autoLoad = true, fileName = "example" },
 
+	discord = "https://discord.gg/yourcode", -- discord button in the title bar + settings
+	infoBar = true, -- fps | ping | executor | time bar, draggable
+
 	status = Onyx.Status.Working, -- Working / Updating / Patched
 	statusNote = "everything works on the latest game version",
 	-- or keep it in a file you can edit any time without updating the script:
@@ -19,7 +22,8 @@ local window = Onyx:CreateWindow({
 	changelog = {
 		once = true,
 		entries = {
-			{ version = "1.1.0", date = "2026-10-08", changes = { "Key system", "Script status", "Changelog popup" } },
+			{ version = "1.2.0", date = "2026-10-08", changes = { "Info bar", "Discord button", "Tabs scroll when there are lots of them" } },
+			{ version = "1.1.0", changes = { "Key system", "Script status", "Changelog popup" } },
 			{ version = "1.0.0", changes = { "First release" } },
 		},
 	},
@@ -129,6 +133,8 @@ tools:CreateButton({
 		log:Append("kill #" .. kills.value)
 	end,
 })
+tools:CreateStatus()
+tools:CreateDiscord()
 tools:CreateDivider({ text = "danger" })
 tools:CreateButton({
 	name = "Reset everything",

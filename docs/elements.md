@@ -208,6 +208,29 @@ info:SetTitle("")
 
 Either part can be empty. `CreateLabel("text")` and `CreateParagraph({ Title, Content })` also work.
 
+## Status
+
+The script status row (working / updating / patched), for when you make your own settings tab. It follows `window:SetStatus` and `statusUrl` on its own.
+
+```lua
+local about = settings:CreateSection("About")
+about:CreateStatus()                                   -- shows whatever the window status is
+about:CreateStatus({ state = "updating", note = "fixing esp" })   -- sets it too
+about:CreateStatus({ name = "Script" })                -- different label
+```
+
+See [status](status.md) for the rest.
+
+## Discord
+
+A button with the discord logo. Copies the invite (and opens it in discord where the executor allows).
+
+```lua
+section:CreateDiscord({ invite = "https://discord.gg/yourcode" })
+section:CreateDiscord({ invite = "yourcode", name = "Support server" })
+section:CreateDiscord()   -- uses the window's discord option
+```
+
 ## Divider
 
 ```lua
