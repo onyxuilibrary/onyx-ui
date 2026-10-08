@@ -11,6 +11,8 @@ local window = Onyx:CreateWindow({
 	discord = "https://discord.gg/yourcode", -- discord button in the title bar + settings
 	-- discordPrompt = { joinDelay = 2, continueDelay = 4 }, -- "join our discord" popup on load
 	infoBar = true, -- fps | ping | executor | time bar, draggable
+	-- language = "es", -- start language, players can change it in Settings
+	translations = { es = { Aimbot = "Puntería", Visuals = "Visuales" } }, -- your own text
 
 	status = Onyx.Status.Working, -- Working / Updating / Patched
 	statusNote = "everything works on the latest game version",

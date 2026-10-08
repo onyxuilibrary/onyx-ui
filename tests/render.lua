@@ -90,6 +90,12 @@ elseif scene == "discord" then
 	M.flush()
 	w:ShowDiscordPrompt({ joinDelay = 3, continueDelay = 5 })
 	gui = w._gui
+elseif scene == "language" then
+	local w = Onyx:CreateWindow(options({ language = "es" }))
+	demo(w)
+	M.flush()
+	w:Navigate(w._settingsTab)
+	gui = w._gui
 elseif scene == "crowded" then
 	-- lots of top tabs in a narrow window
 	local w = Onyx:CreateWindow(options({ subtitle = "lots of tabs", size = UDim2.fromOffset(628, 460), discord = "discord.gg/example", infoBar = true }))

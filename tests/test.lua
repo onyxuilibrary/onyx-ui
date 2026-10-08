@@ -1309,6 +1309,75 @@ noErrors("extras")
 end
 
 --------------------------------------------------------------------------------
+section("language setting")
+--------------------------------------------------------------------------------
+
+;(function()
+local lw = Onyx:CreateWindow({ name = "Lang", status = "working", configuration = { fileName = "lang" } })
+local lt = lw:CreateTab({ name = "Main" })
+M.flush()
+local drop = lw._languageDropdown
+check(drop ~= nil, "language dropdown in settings")
+eq(#drop.options, 10, "10 built-in languages")
+eq(drop.value[1], "English", "starts in English (player locale en-us)")
+eq(lw._settingsTab._buttonLabel.Text, "Settings", "tab name in English")
+
+drop:Set("Español")
+M.flush()
+eq(lw.locale, "es", "picking a language sets the locale")
+eq(lw._settingsTab._buttonLabel.Text, "Ajustes", "settings tab translated")
+eq(drop._label.Text, "Idioma", "language label translated")
+check(M.byText(lw._settingsTab.page, "Tecla del menú") ~= nil, "menu key label translated")
+check(M.byText(lw._tagList, "funciona") ~= nil, "status tag translated")
+eq(lw._statusRow._value.Text, "FUNCIONA", "status row translated")
+check(string.find(lw._aboutText.text, "Ejecutor: MockExec", 1, true) ~= nil, "about line translated")
+lw:Toast({ title = "Enter a config name" })
+M.flush()
+check(M.byText(lw._toastTop, "Escribe un nombre de config") ~= nil, "toasts translated")
+M.click(M.byText(lw._main, "x"))
+check(M.byText(lw._notifyList, "Pulsa RSHIFT para abrirla otra vez.") ~= nil, "templated hint translated")
+lw:Show()
+
+-- your own translations win and add to the list
+lw:RegisterTranslations({ es = { Main = "Principal", Settings = "Opciones" }, ["pt-br"] = { Main = "Principal" } })
+eq(lt._buttonLabel.Text, "Principal", "your strings translate too")
+eq(lw._settingsTab._buttonLabel.Text, "Opciones", "your translation beats the built-in one")
+eq(#drop.options, 11, "registered locale added to the list")
+
+-- saved with the config
+lw:Save("lang")
+drop:Set("Deutsch")
+M.flush()
+eq(lw._settingsTab._buttonLabel.Text, "Einstellungen", "switched to German")
+lw:Load("lang")
+M.flush()
+eq(lw.locale, "es", "language restored from config")
+lw:SetLocale("en")
+eq(drop.value[1], "English", "SetLocale moves the dropdown")
+eq(lw._settingsTab._buttonLabel.Text, "Settings", "back to English")
+lw:Unload()
+
+local gw = Onyx:CreateWindow({ name = "German", language = "de", languages = { "en", "de", "fr" } })
+M.flush()
+eq(gw._settingsTab._buttonLabel.Text, "Einstellungen", "language option picks the start language")
+eq(#gw._languageDropdown.options, 3, "languages option limits the list")
+eq(gw._languageDropdown.value[1], "Deutsch", "dropdown shows it")
+gw:Unload()
+
+local hw = Onyx:CreateWindow({ name = "NoLang", languageSetting = false })
+M.flush()
+eq(hw._languageDropdown, nil, "languageSetting = false hides it")
+hw:Unload()
+
+local bw = Onyx:CreateWindow({ name = "Br", locale = "pt-BR" })
+M.flush()
+eq(bw._settingsTab._buttonLabel.Text, "Configurações", "pt-BR falls back to Portuguese")
+eq(bw._languageDropdown.value[1], "Português", "dropdown matches the fallback")
+bw:Unload()
+noErrors("language")
+end)()
+
+--------------------------------------------------------------------------------
 section("live animation + leaks")
 --------------------------------------------------------------------------------
 

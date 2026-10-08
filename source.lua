@@ -6,7 +6,7 @@
 ]]
 
 local Onyx = {
-	Version = "1.3.0",
+	Version = "1.4.0",
 	Windows = {},
 }
 
@@ -1710,7 +1710,7 @@ function Keybind:Set(value, skipChanged)
 	local key = ParseKey(value)
 	if key and not self._isMenuKey and key == self.window.toggleKey then
 		warn("[Onyx] " .. KeyName(key) .. " is the menu key and cannot be bound")
-		self.window:Toast({ title = "Key in use", subtitle = KeyName(key) .. " toggles the menu", duration = 3 })
+		self.window:Toast({ title = "Key in use", subtitle = self.window:_tf("{key} toggles the menu", { key = KeyName(key) }), duration = 3 })
 		self:_renderKey()
 		return
 	end
@@ -2477,7 +2477,7 @@ function StatusRow:Set(status)
 	local function color()
 		return status.color
 	end
-	self._value.Text = string.upper(status.text)
+	self._value.Text = string.upper(self.window:_t(status.text))
 	self.window:_paint(self._value, { TextColor3 = color })
 	self.window:_paint(self._dot, { BackgroundColor3 = color })
 	self._dot.Position = UDim2.new(1, -(self._value.TextBounds.X + 6), 0.5, 0)
@@ -2891,6 +2891,621 @@ Tab.Destroy = Tab.Remove
 -- Window
 --------------------------------------------------------------------------------
 
+-- Languages ---------------------------------------------------------------------
+
+-- shown in the settings dropdown. add your own with RegisterTranslations
+local Languages = {
+	{ code = "en", name = "English" },
+	{ code = "es", name = "Español" },
+	{ code = "pt", name = "Português" },
+	{ code = "fr", name = "Français" },
+	{ code = "de", name = "Deutsch" },
+	{ code = "ru", name = "Русский" },
+	{ code = "tr", name = "Türkçe" },
+	{ code = "vi", name = "Tiếng Việt" },
+	{ code = "id", name = "Bahasa Indonesia" },
+	{ code = "pl", name = "Polski" },
+}
+
+-- the library's own text. your translations win over these
+local BuiltinTranslations = {
+	es = {
+		["Settings"] = "Ajustes",
+		["Menu"] = "Menú",
+		["Menu key"] = "Tecla del menú",
+		["Theme"] = "Tema",
+		["Language"] = "Idioma",
+		["Info bar"] = "Barra de info",
+		["FPS, ping, executor and time"] = "FPS, ping, ejecutor y hora",
+		["Unload"] = "Descargar",
+		["Unload interface?"] = "¿Descargar la interfaz?",
+		["The menu and all of its keybinds will be removed."] = "Se quitarán el menú y todas sus teclas.",
+		["Cancel"] = "Cancelar",
+		["Configurations"] = "Configuraciones",
+		["Name"] = "Nombre",
+		["config name"] = "nombre de config",
+		["Saved"] = "Guardadas",
+		["Save"] = "Guardar",
+		["Load"] = "Cargar",
+		["Delete"] = "Borrar",
+		["Refresh"] = "Actualizar",
+		["Delete '{name}'?"] = "¿Borrar '{name}'?",
+		["This configuration file will be removed."] = "Se borrará este archivo de configuración.",
+		["Your executor does not support file functions."] = "Tu ejecutor no soporta funciones de archivos.",
+		["About"] = "Info",
+		["Status"] = "Estado",
+		["Executor"] = "Ejecutor",
+		["Enter a config name"] = "Escribe un nombre de config",
+		["Save failed"] = "No se pudo guardar",
+		["Loaded"] = "Cargada",
+		["Nothing to load"] = "Nada que cargar",
+		["Working"] = "Funciona",
+		["Updating"] = "Actualizando",
+		["Patched"] = "Parcheado",
+		["Unknown"] = "Desconocido",
+		["Interface hidden"] = "Interfaz oculta",
+		["Press {key} to open it again."] = "Pulsa {key} para abrirla otra vez.",
+		["Tap the {name} button to open it again."] = "Toca el botón {name} para abrirla otra vez.",
+		["Key in use"] = "Tecla en uso",
+		["{key} toggles the menu"] = "{key} abre y cierra el menú",
+		["None"] = "Ninguno",
+		["Search..."] = "Buscar...",
+		["No results"] = "Sin resultados",
+		["Close"] = "Cerrar",
+		["OK"] = "OK",
+		["Got it"] = "Entendido",
+		["What's new"] = "Novedades",
+		["Latest: {version}"] = "Última: {version}",
+		["Notice"] = "Aviso",
+		["Join our Discord"] = "Únete a nuestro Discord",
+		["Join Discord"] = "Unirse a Discord",
+		["Continue"] = "Continuar",
+		["Invite copied"] = "Invitación copiada",
+		["copied to clipboard"] = "copiado al portapapeles",
+		["Join the {name} Discord"] = "Únete al Discord de {name}",
+		["Get updates, presets and support. Join Discord copies the invite to your clipboard."] = "Novedades, presets y soporte. Unirse a Discord copia la invitación al portapapeles.",
+		["Invite copied: {link}"] = "Invitación copiada: {link}",
+		["key system"] = "sistema de claves",
+		["enter key"] = "escribe la clave",
+		["checking..."] = "comprobando...",
+		["key accepted"] = "clave aceptada",
+		["enter a key first"] = "escribe una clave primero",
+		["invalid key"] = "clave no válida",
+		["get key"] = "obtener clave",
+		["check key"] = "comprobar clave",
+		["link copied to clipboard"] = "enlace copiado al portapapeles",
+	},
+	pt = {
+		["Settings"] = "Configurações",
+		["Menu"] = "Menu",
+		["Menu key"] = "Tecla do menu",
+		["Theme"] = "Tema",
+		["Language"] = "Idioma",
+		["Info bar"] = "Barra de info",
+		["FPS, ping, executor and time"] = "FPS, ping, executor e hora",
+		["Unload"] = "Descarregar",
+		["Unload interface?"] = "Descarregar a interface?",
+		["The menu and all of its keybinds will be removed."] = "O menu e todos os atalhos serão removidos.",
+		["Cancel"] = "Cancelar",
+		["Configurations"] = "Configs",
+		["Name"] = "Nome",
+		["config name"] = "nome da config",
+		["Saved"] = "Salvas",
+		["Save"] = "Salvar",
+		["Load"] = "Carregar",
+		["Delete"] = "Apagar",
+		["Refresh"] = "Atualizar",
+		["Delete '{name}'?"] = "Apagar '{name}'?",
+		["This configuration file will be removed."] = "Este arquivo de config será apagado.",
+		["Your executor does not support file functions."] = "Seu executor não suporta funções de arquivo.",
+		["About"] = "Sobre",
+		["Status"] = "Status",
+		["Executor"] = "Executor",
+		["Enter a config name"] = "Digite um nome de config",
+		["Save failed"] = "Falha ao salvar",
+		["Loaded"] = "Carregada",
+		["Nothing to load"] = "Nada para carregar",
+		["Working"] = "Funcionando",
+		["Updating"] = "Atualizando",
+		["Patched"] = "Patcheado",
+		["Unknown"] = "Desconhecido",
+		["Interface hidden"] = "Interface oculta",
+		["Press {key} to open it again."] = "Aperte {key} para abrir de novo.",
+		["Tap the {name} button to open it again."] = "Toque no botão {name} para abrir de novo.",
+		["Key in use"] = "Tecla em uso",
+		["{key} toggles the menu"] = "{key} abre e fecha o menu",
+		["None"] = "Nenhum",
+		["Search..."] = "Pesquisar...",
+		["No results"] = "Sem resultados",
+		["Close"] = "Fechar",
+		["OK"] = "OK",
+		["Got it"] = "Entendi",
+		["What's new"] = "Novidades",
+		["Latest: {version}"] = "Última: {version}",
+		["Notice"] = "Aviso",
+		["Join our Discord"] = "Entre no nosso Discord",
+		["Join Discord"] = "Entrar no Discord",
+		["Continue"] = "Continuar",
+		["Invite copied"] = "Convite copiado",
+		["copied to clipboard"] = "copiado para a área de transferência",
+		["Join the {name} Discord"] = "Entre no Discord do {name}",
+		["Get updates, presets and support. Join Discord copies the invite to your clipboard."] = "Novidades, presets e suporte. Entrar no Discord copia o convite.",
+		["Invite copied: {link}"] = "Convite copiado: {link}",
+		["key system"] = "sistema de key",
+		["enter key"] = "digite a key",
+		["checking..."] = "verificando...",
+		["key accepted"] = "key aceita",
+		["enter a key first"] = "digite uma key primeiro",
+		["invalid key"] = "key inválida",
+		["get key"] = "pegar key",
+		["check key"] = "verificar key",
+		["link copied to clipboard"] = "link copiado",
+	},
+	fr = {
+		["Settings"] = "Paramètres",
+		["Menu"] = "Menu",
+		["Menu key"] = "Touche du menu",
+		["Theme"] = "Thème",
+		["Language"] = "Langue",
+		["Info bar"] = "Barre d'infos",
+		["FPS, ping, executor and time"] = "FPS, ping, exécuteur et heure",
+		["Unload"] = "Décharger",
+		["Unload interface?"] = "Décharger l'interface ?",
+		["The menu and all of its keybinds will be removed."] = "Le menu et tous ses raccourcis seront supprimés.",
+		["Cancel"] = "Annuler",
+		["Configurations"] = "Configurations",
+		["Name"] = "Nom",
+		["config name"] = "nom de la config",
+		["Saved"] = "Enregistrées",
+		["Save"] = "Enregistrer",
+		["Load"] = "Charger",
+		["Delete"] = "Supprimer",
+		["Refresh"] = "Actualiser",
+		["Delete '{name}'?"] = "Supprimer '{name}' ?",
+		["This configuration file will be removed."] = "Ce fichier de configuration sera supprimé.",
+		["Your executor does not support file functions."] = "Ton exécuteur ne gère pas les fichiers.",
+		["About"] = "À propos",
+		["Status"] = "Statut",
+		["Executor"] = "Exécuteur",
+		["Enter a config name"] = "Entre un nom de config",
+		["Save failed"] = "Échec de l'enregistrement",
+		["Loaded"] = "Chargée",
+		["Nothing to load"] = "Rien à charger",
+		["Working"] = "Fonctionne",
+		["Updating"] = "Mise à jour",
+		["Patched"] = "Patché",
+		["Unknown"] = "Inconnu",
+		["Interface hidden"] = "Interface masquée",
+		["Press {key} to open it again."] = "Appuie sur {key} pour la rouvrir.",
+		["Tap the {name} button to open it again."] = "Touche le bouton {name} pour la rouvrir.",
+		["Key in use"] = "Touche déjà utilisée",
+		["{key} toggles the menu"] = "{key} ouvre et ferme le menu",
+		["None"] = "Aucun",
+		["Search..."] = "Rechercher...",
+		["No results"] = "Aucun résultat",
+		["Close"] = "Fermer",
+		["OK"] = "OK",
+		["Got it"] = "Compris",
+		["What's new"] = "Nouveautés",
+		["Latest: {version}"] = "Dernière : {version}",
+		["Notice"] = "Info",
+		["Join our Discord"] = "Rejoins notre Discord",
+		["Join Discord"] = "Rejoindre Discord",
+		["Continue"] = "Continuer",
+		["Invite copied"] = "Invitation copiée",
+		["copied to clipboard"] = "copié dans le presse-papiers",
+		["Join the {name} Discord"] = "Rejoins le Discord de {name}",
+		["Get updates, presets and support. Join Discord copies the invite to your clipboard."] = "Mises à jour, presets et support. Rejoindre Discord copie l'invitation.",
+		["Invite copied: {link}"] = "Invitation copiée : {link}",
+		["key system"] = "système de clé",
+		["enter key"] = "entre la clé",
+		["checking..."] = "vérification...",
+		["key accepted"] = "clé acceptée",
+		["enter a key first"] = "entre d'abord une clé",
+		["invalid key"] = "clé invalide",
+		["get key"] = "obtenir une clé",
+		["check key"] = "vérifier la clé",
+		["link copied to clipboard"] = "lien copié",
+	},
+	de = {
+		["Settings"] = "Einstellungen",
+		["Menu"] = "Menü",
+		["Menu key"] = "Menütaste",
+		["Theme"] = "Design",
+		["Language"] = "Sprache",
+		["Info bar"] = "Infoleiste",
+		["FPS, ping, executor and time"] = "FPS, Ping, Executor und Uhrzeit",
+		["Unload"] = "Entladen",
+		["Unload interface?"] = "Oberfläche entladen?",
+		["The menu and all of its keybinds will be removed."] = "Das Menü und alle Tastenbelegungen werden entfernt.",
+		["Cancel"] = "Abbrechen",
+		["Configurations"] = "Konfigurationen",
+		["Name"] = "Name",
+		["config name"] = "Config-Name",
+		["Saved"] = "Gespeichert",
+		["Save"] = "Speichern",
+		["Load"] = "Laden",
+		["Delete"] = "Löschen",
+		["Refresh"] = "Aktualisieren",
+		["Delete '{name}'?"] = "'{name}' löschen?",
+		["This configuration file will be removed."] = "Diese Konfigurationsdatei wird gelöscht.",
+		["Your executor does not support file functions."] = "Dein Executor unterstützt keine Dateifunktionen.",
+		["About"] = "Info",
+		["Status"] = "Status",
+		["Executor"] = "Executor",
+		["Enter a config name"] = "Gib einen Config-Namen ein",
+		["Save failed"] = "Speichern fehlgeschlagen",
+		["Loaded"] = "Geladen",
+		["Nothing to load"] = "Nichts zu laden",
+		["Working"] = "Funktioniert",
+		["Updating"] = "Wird aktualisiert",
+		["Patched"] = "Gepatcht",
+		["Unknown"] = "Unbekannt",
+		["Interface hidden"] = "Oberfläche versteckt",
+		["Press {key} to open it again."] = "Drücke {key}, um sie wieder zu öffnen.",
+		["Tap the {name} button to open it again."] = "Tippe auf {name}, um sie wieder zu öffnen.",
+		["Key in use"] = "Taste belegt",
+		["{key} toggles the menu"] = "{key} öffnet und schließt das Menü",
+		["None"] = "Keine",
+		["Search..."] = "Suchen...",
+		["No results"] = "Keine Ergebnisse",
+		["Close"] = "Schließen",
+		["OK"] = "OK",
+		["Got it"] = "Verstanden",
+		["What's new"] = "Neuigkeiten",
+		["Latest: {version}"] = "Neueste: {version}",
+		["Notice"] = "Hinweis",
+		["Join our Discord"] = "Tritt unserem Discord bei",
+		["Join Discord"] = "Discord beitreten",
+		["Continue"] = "Weiter",
+		["Invite copied"] = "Einladung kopiert",
+		["copied to clipboard"] = "in die Zwischenablage kopiert",
+		["Join the {name} Discord"] = "Tritt dem {name} Discord bei",
+		["Get updates, presets and support. Join Discord copies the invite to your clipboard."] = "Updates, Presets und Support. Discord beitreten kopiert die Einladung.",
+		["Invite copied: {link}"] = "Einladung kopiert: {link}",
+		["key system"] = "Key-System",
+		["enter key"] = "Key eingeben",
+		["checking..."] = "prüfe...",
+		["key accepted"] = "Key akzeptiert",
+		["enter a key first"] = "gib zuerst einen Key ein",
+		["invalid key"] = "ungültiger Key",
+		["get key"] = "Key holen",
+		["check key"] = "Key prüfen",
+		["link copied to clipboard"] = "Link kopiert",
+	},
+	ru = {
+		["Settings"] = "Настройки",
+		["Menu"] = "Меню",
+		["Menu key"] = "Клавиша меню",
+		["Theme"] = "Тема",
+		["Language"] = "Язык",
+		["Info bar"] = "Инфо-панель",
+		["FPS, ping, executor and time"] = "FPS, пинг, экзекутор и время",
+		["Unload"] = "Выгрузить",
+		["Unload interface?"] = "Выгрузить интерфейс?",
+		["The menu and all of its keybinds will be removed."] = "Меню и все его бинды будут удалены.",
+		["Cancel"] = "Отмена",
+		["Configurations"] = "Конфиги",
+		["Name"] = "Название",
+		["config name"] = "название конфига",
+		["Saved"] = "Сохранённые",
+		["Save"] = "Сохранить",
+		["Load"] = "Загрузить",
+		["Delete"] = "Удалить",
+		["Refresh"] = "Обновить",
+		["Delete '{name}'?"] = "Удалить '{name}'?",
+		["This configuration file will be removed."] = "Этот файл конфига будет удалён.",
+		["Your executor does not support file functions."] = "Твой экзекутор не поддерживает работу с файлами.",
+		["About"] = "О скрипте",
+		["Status"] = "Статус",
+		["Executor"] = "Экзекутор",
+		["Enter a config name"] = "Введи название конфига",
+		["Save failed"] = "Не удалось сохранить",
+		["Loaded"] = "Загружено",
+		["Nothing to load"] = "Нечего загружать",
+		["Working"] = "Работает",
+		["Updating"] = "Обновляется",
+		["Patched"] = "Пофикшен",
+		["Unknown"] = "Неизвестно",
+		["Interface hidden"] = "Интерфейс скрыт",
+		["Press {key} to open it again."] = "Нажми {key}, чтобы открыть снова.",
+		["Tap the {name} button to open it again."] = "Нажми кнопку {name}, чтобы открыть снова.",
+		["Key in use"] = "Клавиша занята",
+		["{key} toggles the menu"] = "{key} открывает и закрывает меню",
+		["None"] = "Нет",
+		["Search..."] = "Поиск...",
+		["No results"] = "Ничего не найдено",
+		["Close"] = "Закрыть",
+		["OK"] = "ОК",
+		["Got it"] = "Понятно",
+		["What's new"] = "Что нового",
+		["Latest: {version}"] = "Последняя: {version}",
+		["Notice"] = "Уведомление",
+		["Join our Discord"] = "Наш Discord",
+		["Join Discord"] = "Зайти в Discord",
+		["Continue"] = "Продолжить",
+		["Invite copied"] = "Приглашение скопировано",
+		["copied to clipboard"] = "скопировано в буфер обмена",
+		["Join the {name} Discord"] = "Заходи в Discord {name}",
+		["Get updates, presets and support. Join Discord copies the invite to your clipboard."] = "Обновления, пресеты и поддержка. Кнопка «Зайти в Discord» копирует приглашение.",
+		["Invite copied: {link}"] = "Приглашение скопировано: {link}",
+		["key system"] = "система ключей",
+		["enter key"] = "введи ключ",
+		["checking..."] = "проверка...",
+		["key accepted"] = "ключ принят",
+		["enter a key first"] = "сначала введи ключ",
+		["invalid key"] = "неверный ключ",
+		["get key"] = "получить ключ",
+		["check key"] = "проверить ключ",
+		["link copied to clipboard"] = "ссылка скопирована",
+	},
+	tr = {
+		["Settings"] = "Ayarlar",
+		["Menu"] = "Menü",
+		["Menu key"] = "Menü tuşu",
+		["Theme"] = "Tema",
+		["Language"] = "Dil",
+		["Info bar"] = "Bilgi çubuğu",
+		["FPS, ping, executor and time"] = "FPS, ping, executor ve saat",
+		["Unload"] = "Kaldır",
+		["Unload interface?"] = "Arayüz kaldırılsın mı?",
+		["The menu and all of its keybinds will be removed."] = "Menü ve tüm tuş atamaları kaldırılacak.",
+		["Cancel"] = "İptal",
+		["Configurations"] = "Ayar dosyaları",
+		["Name"] = "Ad",
+		["config name"] = "config adı",
+		["Saved"] = "Kayıtlı",
+		["Save"] = "Kaydet",
+		["Load"] = "Yükle",
+		["Delete"] = "Sil",
+		["Refresh"] = "Yenile",
+		["Delete '{name}'?"] = "'{name}' silinsin mi?",
+		["This configuration file will be removed."] = "Bu config dosyası silinecek.",
+		["Your executor does not support file functions."] = "Executor'ın dosya fonksiyonlarını desteklemiyor.",
+		["About"] = "Hakkında",
+		["Status"] = "Durum",
+		["Executor"] = "Executor",
+		["Enter a config name"] = "Bir config adı gir",
+		["Save failed"] = "Kaydedilemedi",
+		["Loaded"] = "Yüklendi",
+		["Nothing to load"] = "Yüklenecek bir şey yok",
+		["Working"] = "Çalışıyor",
+		["Updating"] = "Güncelleniyor",
+		["Patched"] = "Patchlendi",
+		["Unknown"] = "Bilinmiyor",
+		["Interface hidden"] = "Arayüz gizlendi",
+		["Press {key} to open it again."] = "Tekrar açmak için {key} tuşuna bas.",
+		["Tap the {name} button to open it again."] = "Tekrar açmak için {name} butonuna dokun.",
+		["Key in use"] = "Tuş kullanımda",
+		["{key} toggles the menu"] = "{key} menüyü açıp kapatır",
+		["None"] = "Yok",
+		["Search..."] = "Ara...",
+		["No results"] = "Sonuç yok",
+		["Close"] = "Kapat",
+		["OK"] = "Tamam",
+		["Got it"] = "Anladım",
+		["What's new"] = "Yenilikler",
+		["Latest: {version}"] = "Son sürüm: {version}",
+		["Notice"] = "Duyuru",
+		["Join our Discord"] = "Discord'umuza katıl",
+		["Join Discord"] = "Discord'a katıl",
+		["Continue"] = "Devam",
+		["Invite copied"] = "Davet kopyalandı",
+		["copied to clipboard"] = "panoya kopyalandı",
+		["Join the {name} Discord"] = "{name} Discord'una katıl",
+		["Get updates, presets and support. Join Discord copies the invite to your clipboard."] = "Güncellemeler, presetler ve destek. Discord'a katıl butonu daveti panoya kopyalar.",
+		["Invite copied: {link}"] = "Davet kopyalandı: {link}",
+		["key system"] = "key sistemi",
+		["enter key"] = "key gir",
+		["checking..."] = "kontrol ediliyor...",
+		["key accepted"] = "key kabul edildi",
+		["enter a key first"] = "önce bir key gir",
+		["invalid key"] = "geçersiz key",
+		["get key"] = "key al",
+		["check key"] = "key kontrol et",
+		["link copied to clipboard"] = "link kopyalandı",
+	},
+	vi = {
+		["Settings"] = "Cài đặt",
+		["Menu"] = "Menu",
+		["Menu key"] = "Phím menu",
+		["Theme"] = "Giao diện",
+		["Language"] = "Ngôn ngữ",
+		["Info bar"] = "Thanh thông tin",
+		["FPS, ping, executor and time"] = "FPS, ping, executor và giờ",
+		["Unload"] = "Gỡ",
+		["Unload interface?"] = "Gỡ giao diện?",
+		["The menu and all of its keybinds will be removed."] = "Menu và tất cả phím tắt sẽ bị xóa.",
+		["Cancel"] = "Hủy",
+		["Configurations"] = "Cấu hình",
+		["Name"] = "Tên",
+		["config name"] = "tên cấu hình",
+		["Saved"] = "Đã lưu",
+		["Save"] = "Lưu",
+		["Load"] = "Tải",
+		["Delete"] = "Xóa",
+		["Refresh"] = "Làm mới",
+		["Delete '{name}'?"] = "Xóa '{name}'?",
+		["This configuration file will be removed."] = "Tệp cấu hình này sẽ bị xóa.",
+		["Your executor does not support file functions."] = "Executor của bạn không hỗ trợ hàm tệp.",
+		["About"] = "Thông tin",
+		["Status"] = "Trạng thái",
+		["Executor"] = "Executor",
+		["Enter a config name"] = "Nhập tên cấu hình",
+		["Save failed"] = "Lưu thất bại",
+		["Loaded"] = "Đã tải",
+		["Nothing to load"] = "Không có gì để tải",
+		["Working"] = "Hoạt động",
+		["Updating"] = "Đang cập nhật",
+		["Patched"] = "Đã bị vá",
+		["Unknown"] = "Không rõ",
+		["Interface hidden"] = "Đã ẩn giao diện",
+		["Press {key} to open it again."] = "Nhấn {key} để mở lại.",
+		["Tap the {name} button to open it again."] = "Chạm nút {name} để mở lại.",
+		["Key in use"] = "Phím đã dùng",
+		["{key} toggles the menu"] = "{key} bật/tắt menu",
+		["None"] = "Không",
+		["Search..."] = "Tìm...",
+		["No results"] = "Không có kết quả",
+		["Close"] = "Đóng",
+		["OK"] = "OK",
+		["Got it"] = "Đã hiểu",
+		["What's new"] = "Có gì mới",
+		["Latest: {version}"] = "Mới nhất: {version}",
+		["Notice"] = "Thông báo",
+		["Join our Discord"] = "Vào Discord của chúng tôi",
+		["Join Discord"] = "Vào Discord",
+		["Continue"] = "Tiếp tục",
+		["Invite copied"] = "Đã sao chép lời mời",
+		["copied to clipboard"] = "đã sao chép",
+		["Join the {name} Discord"] = "Vào Discord {name}",
+		["Get updates, presets and support. Join Discord copies the invite to your clipboard."] = "Cập nhật, preset và hỗ trợ. Nút Vào Discord sẽ sao chép lời mời.",
+		["Invite copied: {link}"] = "Đã sao chép lời mời: {link}",
+		["key system"] = "hệ thống key",
+		["enter key"] = "nhập key",
+		["checking..."] = "đang kiểm tra...",
+		["key accepted"] = "key hợp lệ",
+		["enter a key first"] = "hãy nhập key trước",
+		["invalid key"] = "key không hợp lệ",
+		["get key"] = "lấy key",
+		["check key"] = "kiểm tra key",
+		["link copied to clipboard"] = "đã sao chép link",
+	},
+	id = {
+		["Settings"] = "Pengaturan",
+		["Menu"] = "Menu",
+		["Menu key"] = "Tombol menu",
+		["Theme"] = "Tema",
+		["Language"] = "Bahasa",
+		["Info bar"] = "Bar info",
+		["FPS, ping, executor and time"] = "FPS, ping, executor dan waktu",
+		["Unload"] = "Unload",
+		["Unload interface?"] = "Unload antarmuka?",
+		["The menu and all of its keybinds will be removed."] = "Menu dan semua keybind-nya akan dihapus.",
+		["Cancel"] = "Batal",
+		["Configurations"] = "Konfigurasi",
+		["Name"] = "Nama",
+		["config name"] = "nama config",
+		["Saved"] = "Tersimpan",
+		["Save"] = "Simpan",
+		["Load"] = "Muat",
+		["Delete"] = "Hapus",
+		["Refresh"] = "Segarkan",
+		["Delete '{name}'?"] = "Hapus '{name}'?",
+		["This configuration file will be removed."] = "File konfigurasi ini akan dihapus.",
+		["Your executor does not support file functions."] = "Executor kamu tidak mendukung fungsi file.",
+		["About"] = "Tentang",
+		["Status"] = "Status",
+		["Executor"] = "Executor",
+		["Enter a config name"] = "Masukkan nama config",
+		["Save failed"] = "Gagal menyimpan",
+		["Loaded"] = "Dimuat",
+		["Nothing to load"] = "Tidak ada yang dimuat",
+		["Working"] = "Berfungsi",
+		["Updating"] = "Sedang diperbarui",
+		["Patched"] = "Kena patch",
+		["Unknown"] = "Tidak diketahui",
+		["Interface hidden"] = "Antarmuka disembunyikan",
+		["Press {key} to open it again."] = "Tekan {key} untuk membukanya lagi.",
+		["Tap the {name} button to open it again."] = "Ketuk tombol {name} untuk membukanya lagi.",
+		["Key in use"] = "Tombol sudah dipakai",
+		["{key} toggles the menu"] = "{key} membuka dan menutup menu",
+		["None"] = "Tidak ada",
+		["Search..."] = "Cari...",
+		["No results"] = "Tidak ada hasil",
+		["Close"] = "Tutup",
+		["OK"] = "OK",
+		["Got it"] = "Oke",
+		["What's new"] = "Yang baru",
+		["Latest: {version}"] = "Terbaru: {version}",
+		["Notice"] = "Pemberitahuan",
+		["Join our Discord"] = "Gabung Discord kami",
+		["Join Discord"] = "Gabung Discord",
+		["Continue"] = "Lanjut",
+		["Invite copied"] = "Undangan disalin",
+		["copied to clipboard"] = "disalin ke clipboard",
+		["Join the {name} Discord"] = "Gabung Discord {name}",
+		["Get updates, presets and support. Join Discord copies the invite to your clipboard."] = "Update, preset dan bantuan. Tombol Gabung Discord menyalin undangan.",
+		["Invite copied: {link}"] = "Undangan disalin: {link}",
+		["key system"] = "sistem key",
+		["enter key"] = "masukkan key",
+		["checking..."] = "memeriksa...",
+		["key accepted"] = "key diterima",
+		["enter a key first"] = "masukkan key dulu",
+		["invalid key"] = "key tidak valid",
+		["get key"] = "ambil key",
+		["check key"] = "cek key",
+		["link copied to clipboard"] = "link disalin",
+	},
+	pl = {
+		["Settings"] = "Ustawienia",
+		["Menu"] = "Menu",
+		["Menu key"] = "Klawisz menu",
+		["Theme"] = "Motyw",
+		["Language"] = "Język",
+		["Info bar"] = "Pasek info",
+		["FPS, ping, executor and time"] = "FPS, ping, executor i godzina",
+		["Unload"] = "Wyładuj",
+		["Unload interface?"] = "Wyładować interfejs?",
+		["The menu and all of its keybinds will be removed."] = "Menu i wszystkie jego skróty zostaną usunięte.",
+		["Cancel"] = "Anuluj",
+		["Configurations"] = "Konfiguracje",
+		["Name"] = "Nazwa",
+		["config name"] = "nazwa configu",
+		["Saved"] = "Zapisane",
+		["Save"] = "Zapisz",
+		["Load"] = "Wczytaj",
+		["Delete"] = "Usuń",
+		["Refresh"] = "Odśwież",
+		["Delete '{name}'?"] = "Usunąć '{name}'?",
+		["This configuration file will be removed."] = "Ten plik konfiguracji zostanie usunięty.",
+		["Your executor does not support file functions."] = "Twój executor nie obsługuje funkcji plików.",
+		["About"] = "Informacje",
+		["Status"] = "Status",
+		["Executor"] = "Executor",
+		["Enter a config name"] = "Wpisz nazwę configu",
+		["Save failed"] = "Nie udało się zapisać",
+		["Loaded"] = "Wczytano",
+		["Nothing to load"] = "Nie ma czego wczytać",
+		["Working"] = "Działa",
+		["Updating"] = "Aktualizacja",
+		["Patched"] = "Spatchowany",
+		["Unknown"] = "Nieznany",
+		["Interface hidden"] = "Interfejs ukryty",
+		["Press {key} to open it again."] = "Naciśnij {key}, aby otworzyć ponownie.",
+		["Tap the {name} button to open it again."] = "Dotknij przycisku {name}, aby otworzyć ponownie.",
+		["Key in use"] = "Klawisz zajęty",
+		["{key} toggles the menu"] = "{key} otwiera i zamyka menu",
+		["None"] = "Brak",
+		["Search..."] = "Szukaj...",
+		["No results"] = "Brak wyników",
+		["Close"] = "Zamknij",
+		["OK"] = "OK",
+		["Got it"] = "Rozumiem",
+		["What's new"] = "Co nowego",
+		["Latest: {version}"] = "Najnowsza: {version}",
+		["Notice"] = "Ogłoszenie",
+		["Join our Discord"] = "Dołącz do naszego Discorda",
+		["Join Discord"] = "Dołącz do Discorda",
+		["Continue"] = "Dalej",
+		["Invite copied"] = "Skopiowano zaproszenie",
+		["copied to clipboard"] = "skopiowano do schowka",
+		["Join the {name} Discord"] = "Dołącz do Discorda {name}",
+		["Get updates, presets and support. Join Discord copies the invite to your clipboard."] = "Aktualizacje, presety i pomoc. Przycisk Dołącz kopiuje zaproszenie.",
+		["Invite copied: {link}"] = "Skopiowano zaproszenie: {link}",
+		["key system"] = "system kluczy",
+		["enter key"] = "wpisz klucz",
+		["checking..."] = "sprawdzanie...",
+		["key accepted"] = "klucz zaakceptowany",
+		["enter a key first"] = "najpierw wpisz klucz",
+		["invalid key"] = "nieprawidłowy klucz",
+		["get key"] = "zdobądź klucz",
+		["check key"] = "sprawdź klucz",
+		["link copied to clipboard"] = "skopiowano link",
+	},
+}
+
+
 local Window = {}
 Window.__index = Window
 
@@ -2947,11 +3562,25 @@ function Window:_t(raw)
 	if exact and exact[raw] then
 		return exact[raw]
 	end
-	local base = tables[string.match(locale, "^(%a+)") or ""]
+	local baseCode = string.match(locale, "^(%a+)") or ""
+	local base = tables[baseCode]
 	if base and base[raw] then
 		return base[raw]
 	end
+	local builtin = BuiltinTranslations[locale] or BuiltinTranslations[baseCode]
+	if builtin and builtin[raw] then
+		return builtin[raw]
+	end
 	return raw
+end
+
+-- translate, then fill in {name} style blanks
+function Window:_tf(raw, vars)
+	local text = self:_t(raw)
+	for key, value in pairs(vars or {}) do
+		text = string.gsub(text, "{" .. key .. "}", (string.gsub(tostring(value), "%%", "%%%%")))
+	end
+	return text
 end
 
 function Window:_text(instance, raw, property)
@@ -4055,8 +4684,92 @@ function Window:ChangeTheme(spec)
 end
 
 function Window:SetLocale(locale)
-	self.locale = locale
+	self.locale = tostring(locale or "en")
 	self:_retranslate()
+	-- bits that are built from several strings get redone by hand
+	if self.status then
+		self:SetStatus(self.status)
+	end
+	if self._aboutText and not self._aboutText._removed then
+		self._aboutText:Set(self:_aboutLine())
+	end
+	self:_syncLanguageDropdown()
+end
+
+function Window:GetLocale()
+	return self.locale
+end
+
+function Window:_aboutLine()
+	return "Onyx " .. Onyx.Version .. "\n" .. self:_t("Executor") .. ": " .. ExecutorName()
+end
+
+-- languages for the settings dropdown: built-in ones plus any you registered
+function Window:_languageList()
+	local list, seen = {}, {}
+	local allowed
+	if self._languageCodes then
+		allowed = {}
+		for _, code in ipairs(self._languageCodes) do
+			allowed[string.lower(tostring(code))] = true
+		end
+	end
+	local function add(code, name)
+		code = string.lower(code)
+		if seen[code] or (allowed and not allowed[code]) then
+			return
+		end
+		seen[code] = true
+		table.insert(list, { code = code, name = (self._languageNames and self._languageNames[code]) or name or code })
+	end
+	for _, language in ipairs(Languages) do
+		add(language.code, language.name)
+	end
+	local extra = {}
+	for code in pairs(self._translations) do
+		table.insert(extra, code)
+	end
+	table.sort(extra)
+	for _, code in ipairs(extra) do
+		local base = string.match(code, "^(%a+)")
+		if not seen[code] and not (base == code and seen[base]) then
+			add(code)
+		end
+	end
+	return list
+end
+
+-- the language entry that matches the current locale ("pt-br" falls back to "pt")
+function Window:_currentLanguage()
+	local locale = string.lower(tostring(self.locale or "en"))
+	local base = string.match(locale, "^(%a+)") or locale
+	local fallback
+	for _, language in ipairs(self:_languageList()) do
+		if language.code == locale then
+			return language
+		elseif language.code == base then
+			fallback = language
+		end
+	end
+	return fallback
+end
+
+function Window:_syncLanguageDropdown()
+	local dropdown = self._languageDropdown
+	if not dropdown or dropdown._removed then
+		return
+	end
+	local names = {}
+	for _, language in ipairs(self:_languageList()) do
+		table.insert(names, language.name)
+	end
+	local current = self:_currentLanguage()
+	if #names ~= #dropdown.options then
+		dropdown:Refresh(names)
+	end
+	if current and dropdown.value[1] ~= current.name then
+		dropdown:Set(current.name, true)
+	end
 end
 
 function Window:SetTranslator(translator)
@@ -4073,6 +4786,7 @@ function Window:RegisterTranslations(tables)
 		end
 	end
 	self:_retranslate()
+	self:_syncLanguageDropdown()
 end
 
 function Window:_retranslate()
@@ -4179,6 +4893,30 @@ function Window:_buildSettings()
 			end
 		end,
 	})
+	if self._languageSetting then
+		local names = {}
+		for _, language in ipairs(self:_languageList()) do
+			table.insert(names, language.name)
+		end
+		local current = self:_currentLanguage()
+		self._languageDropdown = menu:CreateDropdown({
+			name = "Language",
+			flag = "OnyxLanguage",
+			options = names,
+			value = current and current.name or "English",
+			callback = function(name)
+				for _, language in ipairs(self:_languageList()) do
+					if language.name == name then
+						local active = self:_currentLanguage()
+						if not active or active.code ~= language.code then
+							self:SetLocale(language.code)
+						end
+						return
+					end
+				end
+			end,
+		})
+	end
 	self._infoToggle = menu:CreateToggle({
 		name = "Info bar",
 		description = "FPS, ping, executor and time",
@@ -4253,7 +4991,7 @@ function Window:_buildSettings()
 					return
 				end
 				self:Popup({
-					title = "Delete '" .. name .. "'?",
+					title = self:_tf("Delete '{name}'?", { name = name }),
 					content = "This configuration file will be removed.",
 					options = {
 						{ text = "Cancel" },
@@ -4274,7 +5012,7 @@ function Window:_buildSettings()
 	local info = tab:CreateSection({ name = "About", side = self._config and "right" or "left" })
 	self._statusRow = Elements.StatusRow(info, { name = "Status" })
 	self._statusRow:Set(self.status)
-	info:CreateText({ text = "Onyx " .. Onyx.Version .. "\nExecutor: " .. ExecutorName() })
+	self._aboutText = info:CreateText({ text = self:_aboutLine() })
 	if self.discord then
 		info:CreateDiscord({ invite = self.discord })
 	end
@@ -4366,9 +5104,9 @@ function Window:SetStatus(state, note)
 	self.status = status
 	if self._showStatusTag then
 		if self._statusTag then
-			self._statusTag:Set({ text = string.lower(status.text), color = status.color })
+			self._statusTag:Set({ text = string.lower(self:_t(status.text)), color = status.color })
 		else
-			self._statusTag = self:CreateTag({ text = string.lower(status.text), color = status.color, order = -1 })
+			self._statusTag = self:CreateTag({ text = string.lower(self:_t(status.text)), color = status.color, order = -1 })
 		end
 	end
 	self:_eachStatusRow(function(row)
@@ -4412,7 +5150,7 @@ function Window:OpenDiscord(invite, quiet)
 		})
 	end
 	if not quiet then
-		self:Notify({ title = "Discord", content = copied and ("Invite copied: " .. link) or link, duration = 5 })
+		self:Notify({ title = "Discord", content = copied and self:_tf("Invite copied: {link}", { link = link }) or link, duration = 5 })
 	end
 	return copied
 end
@@ -4472,7 +5210,7 @@ function Window:ShowDiscordPrompt(props)
 	List(header, 8, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center })
 	DiscordIcon(18, header).LayoutOrder = 1
 	local title = self:_label({
-		Text = self:_t(Pick(p, "Join the " .. tostring(self.name) .. " Discord", "title")),
+		Text = Pick(p, nil, "title") and self:_t(Pick(p, nil, "title")) or self:_tf("Join the {name} Discord", { name = self.name }),
 		Size = UDim2.new(1, -26, 1, 0),
 		TextSize = 15,
 		TextTruncate = Enum.TextTruncate.AtEnd,
@@ -4854,7 +5592,7 @@ function Window:ShowChangelog(props)
 
 	local popup = self:Popup({
 		title = Pick(p, "What's new", "title"),
-		subtitle = Pick(p, latest ~= "" and ("Latest: " .. (string.match(latest, "^%d") and "v" or "") .. latest) or nil, "subtitle"),
+		subtitle = Pick(p, latest ~= "" and self:_tf("Latest: {version}", { version = (string.match(latest, "^%d") and "v" or "") .. latest }) or nil, "subtitle"),
 		content = Pick(p, nil, "content", "text"),
 		boxes = boxes,
 		options = { { text = Pick(p, "Got it", "button"), style = "primary" } },
@@ -5100,7 +5838,16 @@ function Onyx:CreateWindow(props)
 		window._customTheme = themeSpec
 	end
 	window.toggleKey = ParseKey(Pick(p, nil, "togglekey", "toggleuikeybind", "keybind")) or Enum.KeyCode.RightShift
-	window.locale = Pick(p, nil, "locale") or (LocalPlayer and LocalPlayer.LocaleId) or "en-us"
+	window.locale = Pick(p, nil, "language", "locale") or (LocalPlayer and LocalPlayer.LocaleId) or "en-us"
+	window._languageSetting = Pick(p, true, "languagesetting") ~= false
+	window._languageCodes = Pick(p, nil, "languages")
+	local languageNames = Pick(p, nil, "languagenames")
+	if type(languageNames) == "table" then
+		window._languageNames = {}
+		for code, name in pairs(languageNames) do
+			window._languageNames[string.lower(code)] = name
+		end
+	end
 	window._translator = Pick(p, nil, "translator")
 	window._translations = {}
 	for locale, strings in pairs(Pick(p, {}, "translations") or {}) do
@@ -5241,9 +5988,9 @@ function Onyx:CreateWindow(props)
 		window:Hide()
 		local hint
 		if window._mobile then
-			hint = "Tap the " .. window._showName .. " button to open it again."
+			hint = window:_tf("Tap the {name} button to open it again.", { name = window._showName })
 		else
-			hint = "Press " .. KeyName(window.toggleKey) .. " to open it again."
+			hint = window:_tf("Press {key} to open it again.", { key = KeyName(window.toggleKey) })
 		end
 		window:Notify({ title = "Interface hidden", content = hint, duration = 4 })
 	end)

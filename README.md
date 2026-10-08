@@ -84,6 +84,7 @@ Full guide with every option and fixes for common problems: [docs/status.md](doc
 - info bar with fps, ping, executor and the time
 - discord button with the discord logo (copies the invite and opens it in discord)
 - "join our discord" prompt with countdown buttons
+- language picker in settings, 10 languages built in, add your own
 - notifications, toasts and popups
 - a settings tab with menu key, theme, configs and unload built in
 - mobile: launcher button, scales to fit the screen, multi-touch safe sliders

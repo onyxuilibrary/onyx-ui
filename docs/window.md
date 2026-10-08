@@ -40,7 +40,11 @@ local window = Onyx:CreateWindow({
 | `showIcon` | | icon on the launcher button |
 | `showIconOnly` | `false` | launcher shows just the icon |
 | `showPill` | `true` | `false` turns the launcher off completely |
-| `locale`, `translations`, `translator` | | see below |
+| `language` | player's language | start language, like `"es"` or `"pt-br"` (`locale` works too) |
+| `languages` | all | limit the settings dropdown, like `{ "en", "es", "pt" }` |
+| `languageNames` | | names for your own languages in the dropdown, like `{ ["pt-br"] = "Português (BR)" }` |
+| `languageSetting` | `true` | `false` hides the Language dropdown |
+| `translations`, `translator` | | see below |
 
 ## Methods
 
@@ -94,6 +98,7 @@ Added automatically unless you pass `settingsTab = false`. It has:
 
 - menu key bind
 - theme picker
+- language picker
 - info bar on/off
 - unload button (asks first)
 - configurations: name box, saved list, save / load / delete / refresh (only if `configuration` is set)
@@ -195,23 +200,55 @@ All the options:
 
 Join copies the invite and opens it in the discord app where the executor allows. Clicking the link box also copies it. Escape and clicking outside don't close it, they have to press Continue.
 
-## Translations
+## Language
 
-Tab names, section names, element names, descriptions and placeholders all go through the translator, and update live when you switch.
+![language](images/language.png)
+
+There's a **Language** dropdown in the Settings tab. It starts in the player's own Roblox language if it's one of these, otherwise English:
+
+English, Español, Português, Français, Deutsch, Русский, Türkçe, Tiếng Việt, Bahasa Indonesia, Polski
+
+That translates everything the library itself shows: the Settings tab, popups, toasts, the key system, the discord prompt, dropdown search and the script status. The choice is saved with configs.
 
 ```lua
-window:RegisterTranslations({
-	["pt-br"] = { Aimbot = "Mira", Enabled = "Ativado" },
-})
-window:SetLocale("pt-br")
+Onyx:CreateWindow({ name = "my hub", language = "es" })           -- start in Spanish
+Onyx:CreateWindow({ name = "my hub", languages = { "en", "es" } }) -- only offer these two
+Onyx:CreateWindow({ name = "my hub", languageSetting = false })   -- no dropdown
 
--- or do it yourself
+window:SetLocale("de")      -- switch from code, the dropdown follows
+print(window:GetLocale())   -- "de"
+```
+
+### Translating your own stuff
+
+Your tab, section and element names stay how you wrote them until you give translations for them. Add a table per language, the keys are your English text:
+
+```lua
+local window = Onyx:CreateWindow({
+	name = "my hub",
+	translations = {
+		es = { Aimbot = "Puntería", Visuals = "Visuales", ["Field of view"] = "Campo de visión" },
+		pt = { Aimbot = "Mira", Visuals = "Visuais" },
+	},
+})
+
+-- or later
+window:RegisterTranslations({
+	ru = { Aimbot = "Аимбот" },
+})
+```
+
+Tab names, section names, element names, descriptions, placeholders, notifications and popups all go through it and update live when someone switches language. Anything you translate wins over the built-in text, so you can reword the library's strings too (`es = { Settings = "Opciones" }`).
+
+A language the library doesn't ship (say `["pt-br"]` or `ja`) shows up in the dropdown as soon as you register it. Give it a nicer name with `languageNames = { ja = "日本語" }`.
+
+If you'd rather do it all yourself:
+
+```lua
 window:SetTranslator(function(text, locale)
 	return myLookup[locale] and myLookup[locale][text] or text
 end)
 ```
-
-The default locale is the player's `LocaleId`.
 
 ## Library-level helpers
 
