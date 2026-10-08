@@ -469,9 +469,30 @@ end
 
 local intrinsic
 
+local absSize
 local function extent(c, axis)
 	local s = c.__props.Size or UDim2.new()
 	local base = axis == "X" and s.X.Offset or s.Y.Offset
+	-- like Roblox: a scale-sized child of an auto-sizing box is measured against the
+	-- box's own container, so a full-width line stretches the box to fill that
+	local scale = axis == "X" and s.X.Scale or s.Y.Scale
+	if scale > 0 then
+		local box = rawget(c, "__parent")
+		local function contentSized(inst)
+			local size = inst.__props.Size or UDim2.new()
+			return inst.__class.gui and autoOn(inst, axis) and (axis == "X" and size.X.Scale or size.Y.Scale) == 0
+		end
+		-- climb past every box that sizes purely from content; the first real
+		-- container is what Roblox measures the scale against
+		local outer = box and contentSized(box) and rawget(box, "__parent") or nil
+		while outer and contentSized(outer) do
+			outer = rawget(outer, "__parent")
+		end
+		if outer then
+			local size = absSize(outer)
+			base = base + scale * (axis == "X" and size.X or size.Y)
+		end
+	end
 	if autoOn(c, axis) then return math.max(base, intrinsic(c, axis)) end
 	return base
 end
@@ -583,7 +604,7 @@ function absWidth(inst)
 end
 
 local absSizeRaw
-local function absSize(inst)
+function absSize(inst)
 	local cache = Mock.layoutCache
 	if cache then
 		local hit = cache.size[inst]
@@ -999,13 +1020,16 @@ end
 local TextService = service("TextService", {})
 
 Mock.ping = 48.4
+Mock.region = "us"
 local Stats = service("Stats", {
 	Network = { ServerStatsItem = { ["Data Ping"] = { GetValue = function() return Mock.ping end } } },
 })
 
 local services = {
 	UserInputService = UIS, TweenService = TweenService, RunService = RunService, HttpService = HttpService,
-	GuiService = GuiService, CoreGui = CoreGui, Players = Players, TextService = TextService, Stats = Stats,
+	GuiService = GuiService, CoreGui = CoreGui, Players = Players, TextService = TextService, Stats = Stats, LocalizationService = service("LocalizationService", {
+		GetCountryRegionForPlayerAsync = function(_, player) assert(player, "player required") return Mock.region end,
+	}),
 }
 
 game = {

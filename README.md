@@ -45,6 +45,32 @@ RightShift opens and closes the menu on PC. On mobile there's a small button on 
 
 There's a bigger example covering everything in [example.lua](example.lua).
 
+## Script status (working / updating / patched)
+
+Lets your users see if the script works right now. It shows as a coloured tag next to the title and in the Settings tab.
+
+- `working` (green): everything works
+- `updating` (orange): game updated, you're fixing it
+- `patched` (red): doesn't work right now
+
+The best way is a text file on GitHub, so you can change it without re-uploading your script:
+
+1. Make a file called `status.txt` in your repo with just the word `working` in it
+2. Open it, click **Raw**, copy the link (it starts with `raw.githubusercontent.com`)
+3. Add it to your window:
+
+```lua
+local window = Onyx:CreateWindow({
+	name = "my hub",
+	status = "working", -- fallback if the file can't be loaded
+	statusUrl = "https://raw.githubusercontent.com/YOUR-NAME/YOUR-REPO/main/status.txt",
+})
+```
+
+When the game breaks your script, edit the file to say `patched`. You can add a note too: `updating: fixing aimbot`. If you made your own settings tab, `section:CreateStatus()` adds the status row to it.
+
+Full guide with every option and fixes for common problems: [docs/status.md](docs/status.md)
+
 ## What's in it
 
 - toggles, buttons, sliders, dropdowns (multi select + search), inputs, keybinds (with hold mode), colour pickers, stats, progress bars, consoles, text and dividers
@@ -55,7 +81,7 @@ There's a bigger example covering everything in [example.lua](example.lua).
 - key system
 - script status (working / updating / patched) shown in the header and settings. Point it at a text file and you can flip it to patched without updating your script, see [status](docs/status.md)
 - notice and changelog popups when the script runs
-- info bar with fps, ping, executor and the time
+- info bar with fps, ping, region, executor and the time
 - discord button with the discord logo (copies the invite and opens it in discord)
 - notifications, toasts and popups
 - a settings tab with menu key, theme, configs and unload built in

@@ -6,7 +6,7 @@
 ]]
 
 local Onyx = {
-	Version = "1.2.0",
+	Version = "1.2.1",
 	Windows = {},
 }
 
@@ -285,6 +285,18 @@ local function GetPing()
 	end)
 	if ok and type(value) == "number" then
 		return value
+	end
+	return nil
+end
+
+-- Roblox doesn't tell the client where the server is. this is the country Roblox
+-- matches you from, and it normally puts you in a server close to that
+local function MatchRegion()
+	local ok, code = pcall(function()
+		return Service("LocalizationService"):GetCountryRegionForPlayerAsync(LocalPlayer)
+	end)
+	if ok and type(code) == "string" and code ~= "" then
+		return string.upper(code)
 	end
 	return nil
 end
@@ -3067,6 +3079,29 @@ function Window:_rim(props, fillToken)
 	return outer, fill
 end
 
+-- small floating box (info bar, launcher, toasts): rim, accent line on top, then a
+-- content frame that sizes to whatever is inside it. the box is sized by hand from
+-- the content because in Roblox an AutomaticSize box holding a full-width line
+-- stretches across the whole screen
+function Window:_floatingBox(props)
+	local outer, fill = self:_rim(props, "Panel")
+	local rim = fill.Parent
+	outer.AutomaticSize = Enum.AutomaticSize.None
+	rim.AutomaticSize = Enum.AutomaticSize.None
+	rim.Size = UDim2.fromScale(1, 1)
+	fill.AutomaticSize = Enum.AutomaticSize.None
+	fill.Size = UDim2.fromScale(1, 1)
+	local accent = self:_frame({ Name = "Accent", Size = UDim2.new(1, 0, 0, 1), Parent = fill }, { BackgroundColor3 = "Accent" })
+	local content = self:_frame({ Name = "Content", Size = UDim2.new(), AutomaticSize = AUTO_XY, Position = UDim2.fromOffset(0, 1), BackgroundTransparency = 1, Parent = fill })
+	local function fit()
+		local size = content.AbsoluteSize
+		outer.Size = UDim2.fromOffset(size.X + 4, size.Y + 5)
+	end
+	self:_connect(content:GetPropertyChangedSignal("AbsoluteSize"), fit)
+	fit()
+	return outer, content, fit, accent
+end
+
 function Window:_connect(signal, callback)
 	local connection = signal:Connect(callback)
 	table.insert(self._connections, connection)
@@ -3652,6 +3687,14 @@ function Window:Notify(props)
 
 	local slot = self:_frame({ Name = "Notification", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO_Y, BackgroundTransparency = 1, Parent = self._notifyList })
 	local card, fill = self:_rim({ Size = UDim2.new(1, 0, 0, 0), Position = UDim2.fromOffset(300, 0), Parent = slot }, "Panel")
+	-- the card's height is set by hand from its content. letting it AutomaticSize
+	-- with the full-height strip and click area inside can stretch it down the screen
+	card.AutomaticSize = Enum.AutomaticSize.None
+	local rim = fill.Parent
+	local function fitCard()
+		card.Size = UDim2.new(1, 0, 0, rim.AbsoluteSize.Y + 2)
+	end
+	self:_connect(rim:GetPropertyChangedSignal("AbsoluteSize"), fitCard)
 	List(fill, 0)
 	self:_frame({ Name = "Strip", Size = UDim2.new(0, 2, 1, 0), ZIndex = 2, Parent = card }, { BackgroundColor3 = "Accent" })
 
@@ -3665,6 +3708,7 @@ function Window:Notify(props)
 	local timerTrack = self:_frame({ Size = UDim2.new(1, 0, 0, 1), BackgroundTransparency = 1, LayoutOrder = 2, Parent = fill })
 	local timerBar = self:_frame({ Size = UDim2.fromScale(1, 1), Parent = timerTrack }, { BackgroundColor3 = "Accent" })
 
+	fitCard()
 	local hitbox = self:_hitbox(card)
 	local notification = { slot = slot }
 	local hovered, closed = false, false
@@ -3730,17 +3774,8 @@ function Window:Toast(props)
 
 	local list = bottom and self._toastBottom or self._toastTop
 	local slot = self:_frame({ Name = "Toast", Size = UDim2.fromOffset(0, 0), AutomaticSize = AUTO_XY, BackgroundTransparency = 1, Parent = list })
-	local card, fill = self:_rim({ Size = UDim2.fromOffset(0, 0), Parent = slot }, "Panel")
-	card.AutomaticSize = AUTO_XY
-	fill.Parent.AutomaticSize = AUTO_XY
-	fill.AutomaticSize = AUTO_XY
-	fill.Parent.Size = UDim2.new()
-	fill.Size = UDim2.new()
+	local card, content, fitToast = self:_floatingBox({ Size = UDim2.fromOffset(0, 0), Parent = slot })
 	Create("UISizeConstraint", { MinSize = Vector2.new(math.min(tonumber(Pick(p, 0, "minwidth")) or 0, 320), 0), MaxSize = Vector2.new(320, math.huge), Parent = card })
-
-	List(fill, 0)
-	self:_frame({ Size = UDim2.new(1, 0, 0, 1), LayoutOrder = 1, Parent = fill }, { BackgroundColor3 = "Accent" })
-	local content = self:_frame({ Size = UDim2.new(), AutomaticSize = AUTO_XY, BackgroundTransparency = 1, LayoutOrder = 2, Parent = fill })
 	Padding(content, 6, 12, 6, 10)
 	List(content, 8, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center })
 
@@ -3771,6 +3806,7 @@ function Window:Toast(props)
 		self:_label({ Text = subtitle, Size = UDim2.new(), AutomaticSize = AUTO_XY, TextSize = 12, LayoutOrder = above and 1 or 2, Parent = stack }, "TextDim")
 	end
 
+	fitToast()
 	card.Position = UDim2.fromOffset(0, bottom and 40 or -40)
 	Tween(card, { Position = UDim2.new() }, 0.3, Enum.EasingStyle.Quart)
 
@@ -4261,6 +4297,9 @@ function Window:_refreshPill()
 			self._pillLabel.Text = self._showName .. "  [" .. KeyName(self.toggleKey) .. "]"
 		end
 	end
+	if self._fitPill then
+		self._fitPill()
+	end
 	if self._pill then
 		self._pill.Visible = self._showPill and not self._keyLocked and (self._mobile or not self.visible)
 		if self._pillAccent then
@@ -4386,7 +4425,7 @@ end
 
 -- Info bar --------------------------------------------------------------------------
 
-local InfoFields = { "fps", "ping", "executor", "time" }
+local InfoFields = { "fps", "ping", "region", "executor", "time" }
 
 function Window:_buildInfoBar(spec)
 	local o = type(spec) == "table" and LowerKeys(spec) or {}
@@ -4396,22 +4435,14 @@ function Window:_buildInfoBar(spec)
 	local bottom = string.find(corner, "bottom") ~= nil
 	local topInset = GuiService:GetGuiInset().Y
 
-	local bar, fill = self:_rim({
+	local bar, row, fitBar = self:_floatingBox({
 		Name = "InfoBar",
 		Size = UDim2.new(),
 		AnchorPoint = Vector2.new(right and 1 or 0, bottom and 1 or 0),
 		Position = UDim2.new(right and 1 or 0, right and -10 or 10, bottom and 1 or 0, bottom and -10 or topInset + 10),
 		ZIndex = 14,
 		Parent = self._gui,
-	}, "Panel")
-	bar.AutomaticSize = AUTO_XY
-	fill.Parent.AutomaticSize = AUTO_XY
-	fill.Parent.Size = UDim2.new()
-	fill.AutomaticSize = AUTO_XY
-	fill.Size = UDim2.new()
-	List(fill, 0)
-	self:_frame({ Size = UDim2.new(1, 0, 0, 1), LayoutOrder = 1, Parent = fill }, { BackgroundColor3 = "Accent" })
-	local row = self:_frame({ Size = UDim2.new(), AutomaticSize = AUTO_XY, BackgroundTransparency = 1, LayoutOrder = 2, Parent = fill })
+	})
 	Padding(row, 4, 8, 4, 8)
 	List(row, 0, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center })
 	local title = self:_label({ Text = tostring(Pick(o, self.name, "title", "name")), Size = UDim2.new(), AutomaticSize = AUTO_XY, TextSize = 12, LayoutOrder = 1, Parent = row }, "Accent")
@@ -4419,17 +4450,41 @@ function Window:_buildInfoBar(spec)
 	self._infoBar, self._infoText, self._infoTitle = bar, info, title
 
 	local executor = ExecutorName()
+	-- region: your own string or function wins, otherwise look it up once in the background
+	local regionOption = Pick(o, nil, "region")
+	local region = type(regionOption) == "string" and regionOption or nil
+	if regionOption == nil then
+		task.spawn(function()
+			region = MatchRegion()
+		end)
+	end
 	local frames, since = 0, os.clock()
 	local fps = 0
 	local function refresh()
 		local parts = {}
 		for _, field in ipairs(fields) do
+			if type(field) == "function" then
+				local ok, value = pcall(field)
+				field = ""
+				if ok and value ~= nil then
+					table.insert(parts, tostring(value))
+				end
+			end
 			field = string.lower(tostring(field))
 			if field == "fps" then
 				table.insert(parts, fps .. " fps")
 			elseif field == "ping" then
 				local ping = GetPing()
 				table.insert(parts, ping and (math.floor(ping + 0.5) .. " ms") or "-- ms")
+			elseif field == "region" then
+				if type(regionOption) == "function" then
+					local ok, value = pcall(regionOption)
+					if ok and value ~= nil then
+						table.insert(parts, tostring(value))
+					end
+				elseif region then
+					table.insert(parts, region)
+				end
 			elseif field == "executor" then
 				table.insert(parts, executor)
 			elseif field == "time" then
@@ -4439,6 +4494,7 @@ function Window:_buildInfoBar(spec)
 			end
 		end
 		info.Text = "  |  " .. table.concat(parts, "  |  ")
+		fitBar()
 	end
 	refresh()
 	self:_connect(RunService.RenderStepped, function()
@@ -5204,7 +5260,7 @@ function Onyx:CreateWindow(props)
 	local iconOnly = Pick(p, false, "showicononly") == true
 	local topInset = GuiService:GetGuiInset().Y
 	-- pc: top centre (only shows while hidden). mobile: left edge, clear of the window and the thumbstick
-	local pill, pillFill = window:_rim({
+	local pill, pillRow, fitPill, pillAccent = window:_floatingBox({
 		Name = "Launcher",
 		Size = UDim2.fromOffset(0, 0),
 		AnchorPoint = window._mobile and Vector2.new(0, 0.5) or Vector2.new(0.5, 0),
@@ -5212,15 +5268,9 @@ function Onyx:CreateWindow(props)
 		ZIndex = 15,
 		Visible = false,
 		Parent = gui,
-	}, "Panel")
-	pill.AutomaticSize = AUTO_XY
-	pillFill.Parent.AutomaticSize = AUTO_XY
-	pillFill.Parent.Size = UDim2.new()
-	pillFill.AutomaticSize = AUTO_XY
-	pillFill.Size = UDim2.new()
-	List(pillFill, 0)
-	window._pillAccent = window:_frame({ Size = UDim2.new(1, 0, 0, 1), LayoutOrder = 1, Parent = pillFill }, { BackgroundColor3 = "Accent" })
-	local pillRow = window:_frame({ Size = UDim2.new(), AutomaticSize = AUTO_XY, BackgroundTransparency = 1, LayoutOrder = 2, Parent = pillFill })
+	})
+	window._pillAccent = pillAccent
+	window._fitPill = fitPill
 	if window._mobile then
 		Padding(pillRow, 8, 14, 8, 14)
 	else

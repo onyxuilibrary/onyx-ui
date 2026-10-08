@@ -101,7 +101,9 @@ Added automatically unless you pass `settingsTab = false`. It has:
 
 ## Info bar
 
-The little bar in the top right with your hub name, fps, ping, executor and the time. It stays up when the menu is hidden, and you can drag it anywhere.
+The little bar in the top right with your hub name, fps, ping, region, executor and the time. It stays up when the menu is hidden, and you can drag it anywhere.
+
+About the region: Roblox doesn't tell scripts where the server actually is. What the bar shows is the country Roblox matches you from (like `US` or `GB`). Roblox normally puts you in a server near that, so it's a good guide, and ping tells you if you ended up somewhere far away. If you have your own way of finding the server location, pass it as `region` (see below).
 
 ```lua
 Onyx:CreateWindow({ name = "my hub", infoBar = true })
@@ -111,10 +113,17 @@ Onyx:CreateWindow({
 	name = "my hub",
 	infoBar = {
 		title = "my hub v2",                                  -- defaults to the window name
-		fields = { "fps", "ping", "executor", "time", "player" }, -- any order, leave out what you don't want
+		fields = { "fps", "ping", "region", "executor", "time", "player" }, -- any order, leave out what you don't want
 		position = "top-left",                                -- top-right (default), top-left, bottom-left, bottom-right
+		region = "EU West",                                   -- optional: your own text (or a function) instead of the lookup
 	},
 })
+```
+
+You can also put functions in `fields` for your own stuff, they get called every half second:
+
+```lua
+infoBar = { fields = { "fps", "ping", function() return #game.Players:GetPlayers() .. " players" end } }
 ```
 
 There's also a toggle for it in the settings tab, and it gets saved with configs.
