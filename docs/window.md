@@ -101,9 +101,9 @@ Added automatically unless you pass `settingsTab = false`. It has:
 
 ## Info bar
 
-The little bar in the top right with your hub name, fps, ping, region, executor and the time. It stays up when the menu is hidden, and you can drag it anywhere.
+The little bar in the top right with your hub name, fps, ping, executor and the time. It stays up when the menu is hidden, and you can drag it anywhere.
 
-About the region: Roblox doesn't tell scripts where the server actually is. What the bar shows is the country Roblox matches you from (like `US` or `GB`). Roblox normally puts you in a server near that, so it's a good guide, and ping tells you if you ended up somewhere far away. If you have your own way of finding the server location, pass it as `region` (see below).
+About server region: Roblox doesn't let client scripts see where the server is, and even server-side IP lookups are wrong because Roblox routes traffic through proxies. So the bar doesn't guess. If you have your own source for it, pass it as `region` and add `"region"` to `fields` (see below).
 
 ```lua
 Onyx:CreateWindow({ name = "my hub", infoBar = true })
@@ -113,9 +113,9 @@ Onyx:CreateWindow({
 	name = "my hub",
 	infoBar = {
 		title = "my hub v2",                                  -- defaults to the window name
-		fields = { "fps", "ping", "region", "executor", "time", "player" }, -- any order, leave out what you don't want
+		fields = { "fps", "ping", "executor", "time", "player", "region" }, -- any order, leave out what you don't want
 		position = "top-left",                                -- top-right (default), top-left, bottom-left, bottom-right
-		region = "EU West",                                   -- optional: your own text (or a function) instead of the lookup
+		region = "EU West",                                   -- only shows if you pass it (text or a function)
 	},
 })
 ```
@@ -137,6 +137,63 @@ Onyx:CreateWindow({ name = "my hub", discord = "https://discord.gg/yourcode" })
 That puts a discord logo button in the title bar and a "Join our Discord" button in settings. Clicking either copies the invite and, on executors that support it, opens the invite straight in the discord app. `discord.gg/code`, `discord.com/invite/code` and just `code` all work.
 
 Want the button somewhere else? Use [`section:CreateDiscord()`](elements.md#discord).
+
+### Discord prompt
+
+A "join our discord" card that pops up over the menu, with a Join button and a Continue button. Both can count down before they can be clicked, so people actually read it.
+
+![discord prompt](images/discord.png)
+
+Easiest: show it every time the script runs.
+
+```lua
+Onyx:CreateWindow({
+	name = "Noic Hub",
+	discord = "https://discord.gg/yourcode",
+	discordPrompt = true,
+})
+```
+
+Or with your own text and timings:
+
+```lua
+Onyx:CreateWindow({
+	name = "Noic Hub",
+	discord = "https://discord.gg/yourcode",
+	discordPrompt = {
+		title = "Join the Noic Hub Discord",
+		content = "Get updates, presets and support.",
+		joinDelay = 2,       -- seconds before Join can be clicked (default 0)
+		continueDelay = 4,   -- seconds before Continue can be clicked (default 3)
+		once = false,        -- true: each player only sees it once
+	},
+})
+```
+
+Or call it yourself whenever:
+
+```lua
+local prompt = window:ShowDiscordPrompt({ invite = "yourcode", continueDelay = 5 })
+prompt:Wait()   -- optional: script stops here until they press Continue
+print("they pressed continue")
+```
+
+All the options:
+
+| option | default | what it does |
+|---|---|---|
+| `invite` | window's `discord` | link or code |
+| `title` | `Join the <name> Discord` | big text at the top |
+| `content` | short line about updates and support | grey text under the title, `""` hides it |
+| `joinText` / `continueText` | `Join Discord` / `Continue` | button labels |
+| `joinDelay` | `0` | countdown on the Join button |
+| `continueDelay` | `3` | countdown on the Continue button |
+| `closeOnJoin` | `false` | close the prompt as soon as they press Join |
+| `once` | `false` | only show it once per player (needs file functions) |
+| `onJoin` | | function, runs when Join is pressed |
+| `onContinue` | | function, runs when Continue is pressed |
+
+Join copies the invite and opens it in the discord app where the executor allows. Clicking the link box also copies it. Escape and clicking outside don't close it, they have to press Continue.
 
 ## Translations
 

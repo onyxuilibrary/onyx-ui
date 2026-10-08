@@ -6,7 +6,7 @@
 ]]
 
 local Onyx = {
-	Version = "1.2.1",
+	Version = "1.3.0",
 	Windows = {},
 }
 
@@ -262,6 +262,10 @@ local function SetClipboard(text)
 	return (pcall(setter, text))
 end
 
+local function SafeName(name)
+	return (string.gsub(tostring(name), "[\\/:*?\"<>|]", "_"))
+end
+
 local function ExecutorName()
 	if type(identifyexecutor) == "function" then
 		local ok, name = pcall(identifyexecutor)
@@ -285,18 +289,6 @@ local function GetPing()
 	end)
 	if ok and type(value) == "number" then
 		return value
-	end
-	return nil
-end
-
--- Roblox doesn't tell the client where the server is. this is the country Roblox
--- matches you from, and it normally puts you in a server close to that
-local function MatchRegion()
-	local ok, code = pcall(function()
-		return Service("LocalizationService"):GetCountryRegionForPlayerAsync(LocalPlayer)
-	end)
-	if ok and type(code) == "string" and code ~= "" then
-		return string.upper(code)
 	end
 	return nil
 end
@@ -4402,7 +4394,7 @@ end
 -- Discord -------------------------------------------------------------------------
 
 -- copies the invite and, if the executor can, pops it open in the discord app
-function Window:OpenDiscord(invite)
+function Window:OpenDiscord(invite, quiet)
 	local code = DiscordCode(invite or self.discord)
 	if not code then
 		warn("[Onyx] no discord invite set")
@@ -4419,13 +4411,214 @@ function Window:OpenDiscord(invite)
 			Body = HttpService:JSONEncode({ cmd = "INVITE_BROWSER", nonce = HttpService:GenerateGUID(false), args = { code = code } }),
 		})
 	end
-	self:Notify({ title = "Discord", content = copied and ("Invite copied: " .. link) or link, duration = 5 })
+	if not quiet then
+		self:Notify({ title = "Discord", content = copied and ("Invite copied: " .. link) or link, duration = 5 })
+	end
 	return copied
+end
+
+-- Discord prompt ------------------------------------------------------------------
+
+-- "join our discord" card over the menu. both buttons can count down before they unlock
+function Window:ShowDiscordPrompt(props)
+	if type(props) == "string" then
+		props = { invite = props }
+	end
+	local p = LowerKeys(type(props) == "table" and props or {})
+	local code = DiscordCode(Pick(p, self.discord, "invite", "link", "url", "code"))
+	if not code then
+		warn("[Onyx] ShowDiscordPrompt needs an invite")
+		return nil
+	end
+	local link = "https://discord.gg/" .. code
+	local once = Pick(p, false, "once") == true
+	local seenPath = "Onyx/Seen/discord-" .. SafeName(code) .. ".txt"
+	if once and FileSystem.Available() and isfile(seenPath) then
+		return nil
+	end
+
+	local joinText = self:_t(Pick(p, "Join Discord", "jointext", "joinbutton"))
+	local continueText = self:_t(Pick(p, "Continue", "continuetext", "continuebutton"))
+	local joinLeft = tonumber(Pick(p, 0, "joindelay")) or 0
+	local continueLeft = tonumber(Pick(p, 3, "continuedelay", "delay")) or 0
+	local closeOnJoin = Pick(p, false, "closeonjoin") == true
+	local onJoin = Pick(p, nil, "onjoin")
+	local onContinue = Pick(p, nil, "oncontinue", "callback")
+
+	local prompt = { _window = self, dismissable = false, invite = link }
+	local closed, waiting, copiedUntil = false, {}, 0
+
+	local backdrop = Create("TextButton", {
+		Name = "DiscordPrompt",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = self._popupLayer,
+	})
+	Tween(backdrop, { BackgroundTransparency = 0.45 }, 0.2)
+
+	local card, fill = self:_rim({ Size = UDim2.fromOffset(360, 0), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = backdrop }, "Panel")
+	List(fill, 0)
+	self:_frame({ Size = UDim2.new(1, 0, 0, 2), LayoutOrder = 0, Parent = fill }, { BackgroundColor3 = "Accent" })
+	local body = self:_frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO_Y, BackgroundTransparency = 1, LayoutOrder = 1, Parent = fill })
+	Padding(body, 16, 16, 16, 16)
+	List(body, 12)
+
+	-- logo + title
+	local header = self:_frame({ Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = 1, Parent = body })
+	List(header, 8, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center })
+	DiscordIcon(18, header).LayoutOrder = 1
+	local title = self:_label({
+		Text = self:_t(Pick(p, "Join the " .. tostring(self.name) .. " Discord", "title")),
+		Size = UDim2.new(1, -26, 1, 0),
+		TextSize = 15,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		LayoutOrder = 2,
+		Parent = header,
+	}, "Text")
+	prompt._title = title
+
+	local description = Pick(p, "Get updates, presets and support. Join Discord copies the invite to your clipboard.", "content", "description", "text")
+	if description ~= "" then
+		self:_label({ Text = self:_t(description), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO_Y, TextSize = 12, TextWrapped = true, LayoutOrder = 2, Parent = body }, "TextDim")
+	end
+
+	-- the invite itself, click to copy
+	local linkOuter, linkFill = self:_box(body, UDim2.new(1, 0, 0, 30), nil, "Background")
+	linkOuter.LayoutOrder = 3
+	local linkLabel = self:_label({ Text = link, Size = UDim2.fromScale(1, 1), TextSize = 12, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, Parent = linkFill }, "Accent")
+	prompt._link = linkLabel
+	local linkHit = self:_hitbox(linkOuter)
+	Hover(self, linkHit, function()
+		self:_paint(linkOuter, { BackgroundColor3 = "BorderLight" })
+	end, function()
+		self:_paint(linkOuter, { BackgroundColor3 = "Outline" })
+	end)
+	linkHit.Activated:Connect(function()
+		if SetClipboard(link) then
+			linkLabel.Text = self:_t("copied to clipboard")
+			copiedUntil = os.clock() + 1.5
+		end
+	end)
+
+	-- buttons
+	local row = self:_frame({ Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, LayoutOrder = 4, Parent = body })
+	local function promptButton(position, fillToken, textToken)
+		local outer, inner = self:_box(row, UDim2.new(0.5, -4, 1, 0), position, fillToken)
+		local label = self:_label({ Size = UDim2.fromScale(1, 1), TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, Parent = inner }, textToken)
+		local hit = self:_hitbox(outer)
+		Hover(self, hit, function()
+			self:_paint(outer, { BackgroundColor3 = "BorderLight" })
+		end, function()
+			self:_paint(outer, { BackgroundColor3 = "Outline" })
+		end)
+		return hit, label, inner
+	end
+	local white = function()
+		return Color3.new(1, 1, 1)
+	end
+	local joinHit, joinLabel, joinFill = promptButton(UDim2.new(), function()
+		return DISCORD_BLURPLE
+	end, white)
+	local continueHit, continueLabel = promptButton(UDim2.new(0.5, 4, 0, 0), "Element", "Text")
+	prompt._join, prompt._continue = joinLabel, continueLabel
+
+	local function paintButtons()
+		if os.clock() >= copiedUntil and linkLabel.Text ~= link then
+			linkLabel.Text = link
+		end
+		local joinReady, continueReady = joinLeft <= 0, continueLeft <= 0
+		if os.clock() < copiedUntil and joinReady then
+			joinLabel.Text = self:_t("Invite copied")
+		else
+			joinLabel.Text = joinReady and joinText or (joinText .. " (" .. math.ceil(joinLeft) .. ")")
+		end
+		continueLabel.Text = continueReady and continueText or (continueText .. " (" .. math.ceil(continueLeft) .. ")")
+		joinLabel.TextTransparency = joinReady and 0 or 0.45
+		joinFill.BackgroundTransparency = joinReady and 0 or 0.35
+		continueLabel.TextTransparency = continueReady and 0 or 0.55
+	end
+	paintButtons()
+
+	local ticker = RunService.Heartbeat:Connect(function(dt)
+		joinLeft = joinLeft - dt
+		continueLeft = continueLeft - dt
+		paintButtons()
+	end)
+	table.insert(self._connections, ticker)
+
+	function prompt:Close()
+		if closed then
+			return
+		end
+		closed = true
+		ticker:Disconnect()
+		local window = prompt._window
+		local index = IndexOf(window._popups, prompt)
+		if index then
+			table.remove(window._popups, index)
+		end
+		if once and FileSystem.Available() then
+			pcall(function()
+				FileSystem.EnsureFolder("Onyx/Seen")
+				writefile(seenPath, link)
+			end)
+		end
+		card.Visible = false
+		local tween = Tween(backdrop, { BackgroundTransparency = 1 }, 0.15)
+		tween.Completed:Connect(function()
+			backdrop:Destroy()
+		end)
+		for _, thread in ipairs(waiting) do
+			task.spawn(thread)
+		end
+		waiting = {}
+	end
+
+	-- yields until the prompt is closed, handy if you want your script to wait for Continue
+	function prompt:Wait()
+		if not closed then
+			local thread = coroutine.running()
+			table.insert(waiting, thread)
+			coroutine.yield()
+		end
+	end
+
+	function prompt:IsOpen()
+		return not closed
+	end
+
+	joinHit.Activated:Connect(function()
+		if closed or joinLeft > 0 then
+			return
+		end
+		self:OpenDiscord(link, true)
+		copiedUntil = os.clock() + 2
+		paintButtons()
+		Call(onJoin)
+		if closeOnJoin then
+			prompt:Close()
+		end
+	end)
+	continueHit.Activated:Connect(function()
+		if closed or continueLeft > 0 then
+			return
+		end
+		prompt:Close()
+		Call(onContinue)
+	end)
+
+	self:_fitCard(card, 360)
+	table.insert(self._popups, prompt)
+	return prompt
 end
 
 -- Info bar --------------------------------------------------------------------------
 
-local InfoFields = { "fps", "ping", "region", "executor", "time" }
+local InfoFields = { "fps", "ping", "executor", "time" }
 
 function Window:_buildInfoBar(spec)
 	local o = type(spec) == "table" and LowerKeys(spec) or {}
@@ -4450,14 +4643,9 @@ function Window:_buildInfoBar(spec)
 	self._infoBar, self._infoText, self._infoTitle = bar, info, title
 
 	local executor = ExecutorName()
-	-- region: your own string or function wins, otherwise look it up once in the background
+	-- Roblox doesn't let client scripts see where the server is, so region is
+	-- whatever you pass in (a string, or a function that returns one)
 	local regionOption = Pick(o, nil, "region")
-	local region = type(regionOption) == "string" and regionOption or nil
-	if regionOption == nil then
-		task.spawn(function()
-			region = MatchRegion()
-		end)
-	end
 	local frames, since = 0, os.clock()
 	local fps = 0
 	local function refresh()
@@ -4482,8 +4670,8 @@ function Window:_buildInfoBar(spec)
 					if ok and value ~= nil then
 						table.insert(parts, tostring(value))
 					end
-				elseif region then
-					table.insert(parts, region)
+				elseif regionOption ~= nil then
+					table.insert(parts, tostring(regionOption))
 				end
 			elseif field == "executor" then
 				table.insert(parts, executor)
@@ -4607,10 +4795,6 @@ function Window:_watchStatus(url, every)
 end
 
 -- Notice / changelog -------------------------------------------------------------
-
-local function SafeName(name)
-	return (string.gsub(tostring(name), "[\\/:*?\"<>|]", "_"))
-end
 
 function Window:ShowNotice(props)
 	if type(props) == "string" then
@@ -5465,7 +5649,8 @@ function Onyx:CreateWindow(props)
 
 	local changelog = Pick(p, nil, "changelog")
 	local notice = Pick(p, nil, "notice")
-	if changelog or notice then
+	local discordPrompt = Pick(p, nil, "discordprompt")
+	if changelog or notice or discordPrompt then
 		task.defer(function()
 			if window.unloaded then
 				return
@@ -5475,6 +5660,9 @@ function Onyx:CreateWindow(props)
 			end
 			if notice then
 				window:ShowNotice(notice)
+			end
+			if discordPrompt then
+				window:ShowDiscordPrompt(discordPrompt == true and {} or discordPrompt)
 			end
 		end)
 	end

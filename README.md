@@ -81,8 +81,9 @@ Full guide with every option and fixes for common problems: [docs/status.md](doc
 - key system
 - script status (working / updating / patched) shown in the header and settings. Point it at a text file and you can flip it to patched without updating your script, see [status](docs/status.md)
 - notice and changelog popups when the script runs
-- info bar with fps, ping, region, executor and the time
+- info bar with fps, ping, executor and the time
 - discord button with the discord logo (copies the invite and opens it in discord)
+- "join our discord" prompt with countdown buttons
 - notifications, toasts and popups
 - a settings tab with menu key, theme, configs and unload built in
 - mobile: launcher button, scales to fit the screen, multi-touch safe sliders
@@ -95,6 +96,8 @@ Full guide with every option and fixes for common problems: [docs/status.md](doc
 | sidebar layout, ember theme, colour picker | settings tab with script status |
 | ![key system](docs/images/keysystem.png) | ![changelog](docs/images/changelog.png) |
 | key system | changelog on execute |
+| ![discord prompt](docs/images/discord.png) | |
+| discord prompt with countdown buttons | |
 
 ![mobile](docs/images/mobile.png)
 

@@ -1,6 +1,6 @@
 // Renders a scene from render.lua to static HTML (used for the screenshots in docs/images).
 // usage: node render.js <scene> <out.html> [viewW viewH cssScale]
-// scenes: main, sidebar, settings, keysystem, changelog, mobile, crowded (mobile uses 993 459 0.85)
+// scenes: main, sidebar, settings, keysystem, changelog, mobile, crowded, discord (mobile uses 993 459 0.85)
 // then screenshot the page at its size, e.g. with headless Chrome/Edge:
 //   msedge --headless --window-size=1280,720 --virtual-time-budget=6000 --screenshot=main.png http://localhost/main.html
 // (serve it over http so the Inconsolata web font loads)

@@ -87,7 +87,8 @@ local function resume(co, ...)
 end
 
 local function runThread(fn, ...)
-	resume(coroutine.create(fn), ...)
+	-- like Roblox, task.spawn also takes a thread and resumes it
+	resume(type(fn) == "thread" and fn or coroutine.create(fn), ...)
 end
 
 task = {

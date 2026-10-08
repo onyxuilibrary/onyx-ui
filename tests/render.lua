@@ -84,6 +84,12 @@ elseif scene == "mobile" then
 	local w = Onyx:CreateWindow(options({ scale = 1 }))
 	demo(w)
 	gui = w._gui
+elseif scene == "discord" then
+	local w = Onyx:CreateWindow(options({ name = "Noic Hub" }))
+	demo(w)
+	M.flush()
+	w:ShowDiscordPrompt({ joinDelay = 3, continueDelay = 5 })
+	gui = w._gui
 elseif scene == "crowded" then
 	-- lots of top tabs in a narrow window
 	local w = Onyx:CreateWindow(options({ subtitle = "lots of tabs", size = UDim2.fromOffset(628, 460), discord = "discord.gg/example", infoBar = true }))

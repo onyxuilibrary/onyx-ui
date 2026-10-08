@@ -9,6 +9,7 @@ local window = Onyx:CreateWindow({
 	configuration = { autoSave = true, autoLoad = true, fileName = "example" },
 
 	discord = "https://discord.gg/yourcode", -- discord button in the title bar + settings
+	-- discordPrompt = { joinDelay = 2, continueDelay = 4 }, -- "join our discord" popup on load
 	infoBar = true, -- fps | ping | executor | time bar, draggable
 
 	status = Onyx.Status.Working, -- Working / Updating / Patched
