@@ -36,6 +36,9 @@ local window = Onyx:CreateWindow({
 | `changelog` | | changelog shown when the script runs |
 | `loadingScreen` | | `true` or a table, loading card before the menu opens, see below |
 | `animations` | `true` | `false` turns off the open/close pop and the intro |
+| `keepOnScreen` | `true` | the menu can't be dragged off the screen |
+| `lockPosition` | `false` | the menu can't be dragged |
+| `toggleStyle` | `"checkbox"` | `"switch"` makes every toggle a sliding switch |
 | `accentSetting` | `true` | `false` hides the Accent colour picker in Settings, see [colours](colors.md) |
 | `mobile` | auto | force the mobile layout on/off |
 | `scale` | auto | fixed UI scale, normally it shrinks itself to fit the screen |
@@ -102,16 +105,44 @@ tag:Remove()
 
 ## Settings tab
 
-Added automatically unless you pass `settingsTab = false`. It has:
+![settings](images/settings.png)
 
-- menu key bind
-- theme picker
-- accent colour picker (players choose their own menu colour, see [colours](colors.md))
-- language picker
+Added automatically unless you pass `settingsTab = false`. Everything in it is saved with the player's config.
+
+**Appearance**
+- theme
+- accent colour: players pick their own menu colour, see [colours](colors.md)
+- rainbow top bar on/off
+- language
+- UI scale: 50% to 150% on top of the automatic fit
+- animations on/off
+
+**Interface**
+- keep on screen (on by default): the menu can't be dragged off the edge of the screen, and if the screen gets smaller or the menu gets bigger it slides back in
+- lock position: the menu can't be dragged at all
+- notifications on/off (toasts still show)
 - info bar on/off
-- unload button (asks first)
-- configurations: name box, saved list, save / load / delete / refresh (only if `configuration` is set)
-- about: script status, library version, executor name, discord button (if `discord` is set)
+- center window
+
+**Menu**
+- menu key
+- unload (asks first)
+
+**Configurations**: name box, saved list, save / load / delete / refresh (only if `configuration` is set)
+
+**About**: script status, library version, executor name, discord button (if `discord` is set)
+
+The same things from your script:
+
+```lua
+window:SetKeepOnScreen(true)
+window:SetLockPosition(false)
+window:CenterWindow()
+window:SetUIScale(0.9)        -- 0.5 to 1.5
+window:SetAnimations(true)
+window:SetNotifications(true)
+window:SetRainbow(false)
+```
 
 ## Loading screen
 

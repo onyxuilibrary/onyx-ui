@@ -108,6 +108,8 @@ Everything about colours: [docs/colors.md](docs/colors.md)
 - custom colours: colour pickers for your features, and players pick the menu's accent colour in Settings, see [colours](docs/colors.md)
 - ESP preview panel with a dummy player that follows your ESP toggles and colours, see [ESP preview](docs/esp-preview.md)
 - links (accent, underlined, click to copy)
+- settings for players: keep the menu on screen, lock its position, center it, UI scale, animations, notifications, rainbow bar
+- checkbox or switch toggles, sliders with a notch, dropdowns whose + turns into an x when open
 - images and image galleries (skin pickers), with web links downloaded and cached for you
 - open/close animations, and a small draggable button to open the menu on mobile (Delta etc.)
 - notifications, toasts and popups
@@ -126,6 +128,8 @@ Everything about colours: [docs/colors.md](docs/colors.md)
 | discord prompt with countdown buttons | image gallery for skins (placeholder pictures) |
 | ![loading](docs/images/loading.png) | ![esp preview](docs/images/esp.png) |
 | loading screen | ESP preview, links and the status badge |
+| ![switches](docs/images/switches.png) | |
+| `toggleStyle = "switch"`, cobalt theme | |
 
 ![mobile](docs/images/mobile.png)
 

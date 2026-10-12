@@ -169,6 +169,10 @@ elseif scene == "esp" then
 	w._main.Position = UDim2.fromOffset(330, 120)
 	M.advance(0.05)
 	gui = w._gui
+elseif scene == "switches" then
+	local w = Onyx:CreateWindow(options({ toggleStyle = "switch", theme = "cobalt" }))
+	demo(w)
+	gui = w._gui
 elseif scene == "crowded" then
 	-- lots of top tabs in a narrow window
 	local w = Onyx:CreateWindow(options({ subtitle = "lots of tabs", size = UDim2.fromOffset(628, 460), discord = "discord.gg/example", infoBar = true }))

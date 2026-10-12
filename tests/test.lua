@@ -667,7 +667,14 @@ M.press("Insert")
 check(not cw._main.Visible, "new menu key hides")
 M.press("Insert")
 check(cw._main.Visible, "new menu key shows")
-local cfgSection = cw._settingsTab.columns[2].children[1]
+local cfgSection
+for _, column in ipairs(cw._settingsTab.columns) do
+	for _, child in ipairs(column.children) do
+		if child.name == "Configurations" then
+			cfgSection = child
+		end
+	end
+end
 check(cfgSection ~= nil and cfgSection.name == "Configurations", "configurations section exists")
 local nameBox = cfgSection.children[1]
 M.typeInto(nameBox._box, "mine")
@@ -865,10 +872,18 @@ check(mtab.page.ScrollingEnabled, "page scrolling restored")
 -- Dragging the window by its header with a finger
 local header = mw._main:FindFirstChild("Header", true) or M.find(mw._main, function(d) return d.Name == "Header" end)
 local hp = M.center(header)
+mw:SetKeepOnScreen(false)
 local mainBefore = mw._main.AbsolutePosition
 M.touchDrag(header, hp, Vector2.new(hp.X - 40, hp.Y + 20))
 local mainAfter = mw._main.AbsolutePosition
 check(math.abs(mainAfter.X - mainBefore.X + 40) < 1 and math.abs(mainAfter.Y - mainBefore.Y - 20) < 1, "touch drag moves the window")
+mw:SetKeepOnScreen(true)
+M.flush()
+do
+	local pos = mw._main.AbsolutePosition - mw._gui.AbsolutePosition
+	local size, screen = mw._main.AbsoluteSize, mw._gui.AbsoluteSize
+	check(pos.X >= -0.5 and pos.Y >= -0.5 and pos.X + size.X <= screen.X + 0.5 and pos.Y + size.Y <= screen.Y + 0.5, "keep on screen pulls it back inside")
+end
 
 -- Dropdown by tap: taller rows, scaled list, tap outside closes
 M.tap(hitbox(mDrop._box))
@@ -1691,6 +1706,126 @@ M.advance(0.8)
 check(not iw._cover.Visible, "content cover gone after the fade")
 iw:Unload()
 noErrors("esp preview")
+end)()
+
+--------------------------------------------------------------------------------
+section("interface settings and option polish")
+--------------------------------------------------------------------------------
+
+;(function()
+local sw = Onyx:CreateWindow({ name = "Settings" })
+local st = sw:CreateTab({ name = "Main" })
+local ss = st:CreateSection("Things")
+M.flush()
+local function inside()
+	local pos = sw._main.AbsolutePosition - sw._gui.AbsolutePosition
+	local size, screen = sw._main.AbsoluteSize, sw._gui.AbsoluteSize
+	return pos.X >= -0.5 and pos.Y >= -0.5 and pos.X + size.X <= screen.X + 0.5 and pos.Y + size.Y <= screen.Y + 0.5
+end
+local header = M.find(sw._main, function(d) return d.Name == "Header" end)
+
+-- keep on screen (default on)
+check(sw._keepToggle.value, "keep on screen is on by default")
+local c = M.center(header)
+M.drag(header, c, Vector2.new(c.X + 2000, c.Y + 2000))
+check(inside(), "can't drag it off the bottom right")
+c = M.center(header)
+M.drag(header, c, Vector2.new(c.X - 3000, c.Y - 3000))
+check(inside(), "can't drag it off the top left")
+eq((sw._main.AbsolutePosition - sw._gui.AbsolutePosition).X, 0, "stops right at the edge")
+M.click(hitbox(sw._keepToggle.row))
+check(not sw._keepOnScreen, "toggle turns it off")
+c = M.center(header)
+M.drag(header, c, Vector2.new(c.X - 300, c.Y))
+check(not inside(), "off: it can go past the edge")
+M.click(hitbox(sw._keepToggle.row))
+M.flush()
+check(inside(), "turning it back on pulls the window in")
+
+-- lock position
+M.click(hitbox(sw._lockToggle.row))
+local before = sw._main.AbsolutePosition
+c = M.center(header)
+M.drag(header, c, Vector2.new(c.X + 100, c.Y + 50))
+eq(sw._main.AbsolutePosition, before, "locked: dragging does nothing")
+M.click(hitbox(sw._lockToggle.row))
+
+-- center
+local centerButton = M.byText(sw._settingsTab.page, "Center window")
+M.click(hitbox(centerButton.Parent.Parent))
+eq(sw._main.AnchorPoint, Vector2.new(0.5, 0.5), "centered")
+eq(sw._main.Position, UDim2.fromScale(0.5, 0.5), "back in the middle")
+
+-- ui scale
+local baseScale = sw._scale
+sw._scaleSlider:Set(80)
+check(math.abs(sw._scale - baseScale * 0.8) < 1e-6, "UI scale slider shrinks the menu (" .. sw._scale .. ")")
+sw._scaleSlider:Set(100)
+check(math.abs(sw._scale - baseScale) < 1e-6, "back to normal")
+
+-- notifications
+M.click(hitbox(sw._notifyToggle.row))
+local muted = sw:Notify({ title = "quiet" })
+M.flush()
+eq(sw._notifyList:FindFirstChild("Notification"), nil, "notifications off: nothing shows")
+check(type(muted) == "table" and type(muted.close) == "function", "still returns something you can close")
+M.click(hitbox(sw._notifyToggle.row))
+sw:Notify({ title = "loud" })
+M.flush()
+check(sw._notifyList:FindFirstChild("Notification") ~= nil, "back on")
+
+-- rainbow bar + animations
+check(sw._rainbowToggle.value == (sw.Theme.Rainbow == true), "rainbow toggle matches the theme")
+sw._themeDropdown:Set("cobalt")
+eq(sw._rainbowToggle.value, false, "theme without rainbow turns the toggle off")
+M.click(hitbox(sw._rainbowToggle.row))
+eq(sw.Theme.Rainbow, true, "toggle turns the rainbow bar on")
+M.click(hitbox(sw._animationToggle.row))
+check(not sw._animate, "animations toggle")
+sw:Hide()
+check(not sw._main.Visible, "no animation: hides at once")
+sw:Show()
+M.click(hitbox(sw._animationToggle.row))
+
+-- saved with the config
+sw._keepToggle:Set(false)
+sw._scaleSlider:Set(90)
+sw:Save("ui")
+sw._keepToggle:Set(true)
+sw._scaleSlider:Set(100)
+sw:Load("ui")
+M.flush()
+check(not sw._keepOnScreen and math.abs(sw._scaleMultiplier - 0.9) < 1e-6, "interface settings saved with configs")
+
+-- polish
+local t = ss:CreateToggle({ name = "Pop" })
+M.flush()
+t:Set(true)
+eq(t._pop.Scale, 1, "pop settles back to normal size")
+local sw2 = ss:CreateToggle({ name = "Switchy", style = "switch", value = false })
+check(sw2._knob ~= nil, "switch style has a knob")
+eq(sw2._knob.Position.X.Offset, 1, "knob starts left")
+sw2:Set(true)
+eq(sw2._knob.Position.X.Offset, 13, "knob slides right when on")
+local drop = ss:CreateDropdown({ name = "D", options = { "a", "b" } })
+M.flush()
+M.click(hitbox(drop._box))
+eq(drop._arrow.Rotation, 45, "+ turns into x when open")
+M.click(hitbox(drop._box))
+M.flush()
+eq(drop._arrow.Rotation, 0, "and back when closed")
+local slider = ss:CreateSlider({ name = "S", range = { 0, 10 }, value = 5 })
+M.flush()
+check(M.find(slider._fill, function(d) return d.Name == "Notch" end) ~= nil, "slider fill has a notch")
+check(M.find(ss.root, function(d) return d.Name == "Tick" end) ~= nil, "section title has an accent tick")
+sw:Unload()
+
+local fw = Onyx:CreateWindow({ name = "Fixed", keepOnScreen = false, lockPosition = true, toggleStyle = "switch" })
+local ft = fw:CreateTab({ name = "T" }):CreateSection("S"):CreateToggle({ name = "x" })
+check(not fw._keepOnScreen and fw._lockPosition, "options set the defaults")
+eq(ft.style, "switch", "toggleStyle applies to every toggle")
+fw:Unload()
+noErrors("interface settings")
 end)()
 
 --------------------------------------------------------------------------------

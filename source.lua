@@ -6,7 +6,7 @@
 ]]
 
 local Onyx = {
-	Version = "1.6.0",
+	Version = "1.7.0",
 	Windows = {},
 }
 
@@ -1148,15 +1148,23 @@ end
 local Toggle = ElementClass()
 
 function Elements.Toggle(holder, p)
-	local self = NewElement(Toggle, holder, p, "Toggle", 18, GUTTER)
+	-- "checkbox" (default) or "switch", per toggle or for the whole window with toggleStyle
+	local style = string.lower(tostring(Pick(p, holder.window._toggleStyle or "checkbox", "style")))
+	local switch = style == "switch"
+	local self = NewElement(Toggle, holder, p, "Toggle", 18, switch and 28 or GUTTER)
 	local window = self.window
 	self.callback = Pick(p, nil, "callback")
 	self.value = Pick(p, false, "value", "currentvalue", "default") == true
+	self.style = switch and "switch" or "checkbox"
 
-	local outer, inner = window:_box(self.row, UDim2.fromOffset(10, 10), UDim2.new(0, 0, 0.5, -5), function(theme)
+	local outer, inner = window:_box(self.row, switch and UDim2.fromOffset(22, 10) or UDim2.fromOffset(10, 10), UDim2.new(0, 0, 0.5, -5), function(theme)
 		return self.value and theme.Accent or theme.Element
 	end)
 	self._outer, self._fill = outer, inner
+	self._pop = Create("UIScale", { Scale = 1, Parent = outer })
+	if switch then
+		self._knob = window:_frame({ Name = "Knob", Size = UDim2.fromOffset(6, 6), Position = UDim2.fromOffset(self.value and 13 or 1, 1), Parent = inner }, { BackgroundColor3 = "Text" })
+	end
 
 	local hitbox = window:_hitbox(self.row, 3)
 	Hover(window, hitbox, function()
@@ -1194,6 +1202,14 @@ function Toggle:Set(value, skipCallback)
 			return self.value and theme.Accent or theme.Element
 		end,
 	}, true)
+	if self._knob then
+		Tween(self._knob, { Position = UDim2.fromOffset(value and 13 or 1, 1) }, 0.16, Enum.EasingStyle.Quint)
+	end
+	if changed and self.window._animate then
+		-- quick pop so the click feels like it landed
+		self._pop.Scale = 1.25
+		Tween(self._pop, { Scale = 1 }, 0.2, Enum.EasingStyle.Quint)
+	end
 	self:_paintLabel()
 	if not skipCallback then
 		Call(self.callback, value)
@@ -1238,7 +1254,7 @@ function Elements.Slider(holder, p)
 			TextXAlignment = Enum.TextXAlignment.Right,
 			TextSize = 12,
 			Parent = self.row,
-		}, "TextDim")
+		}, "Text")
 		self:_reserve(84)
 	end
 
@@ -1252,6 +1268,8 @@ function Elements.Slider(holder, p)
 		Parent = inner,
 	}, { BackgroundColor3 = "Accent" })
 	Create("UIGradient", { Rotation = 90, Color = Shine, Parent = self._fill })
+	-- small bright notch where the fill ends
+	window:_frame({ Name = "Notch", Size = UDim2.new(0, 2, 1, 0), Position = UDim2.new(1, -2, 0, 0), BackgroundTransparency = 0.25 }, { BackgroundColor3 = "Text" }).Parent = self._fill
 
 	local hitbox = window:_hitbox(outer, 6)
 	Hover(window, hitbox, function()
@@ -1266,6 +1284,9 @@ function Elements.Slider(holder, p)
 		local size = outer.AbsoluteSize.X
 		local alpha = size > 0 and math.clamp((position.X - outer.AbsolutePosition.X) / size, 0, 1) or 0
 		local value = alpha >= 1 and self.max or self:_clamp(self.min + (self.max - self.min) * alpha)
+		if not self._dragging and self._valueLabel then
+			window:_paint(self._valueLabel, { TextColor3 = "Accent" })
+		end
 		self._dragging = true
 		if value ~= self.value then
 			self:_apply(value)
@@ -1273,6 +1294,9 @@ function Elements.Slider(holder, p)
 		end
 	end, function()
 		self._dragging = false
+		if self._valueLabel then
+			window:_paint(self._valueLabel, { TextColor3 = "Text" }, true)
+		end
 		Call(self.callback, self.value, false)
 		self:_changed()
 	end)
@@ -1432,7 +1456,7 @@ function Dropdown:_renderDisplay()
 		self._display.Text = table.concat(self.value, ", ")
 		window:_paint(self._display, { TextColor3 = "Text" })
 	end
-	self._arrow.Text = self._open and "-" or "+"
+	self._arrow.Rotation = self._open and 45 or 0
 	if self._open and self._renderList then
 		self._renderList()
 	end
@@ -1560,11 +1584,13 @@ function Dropdown:_openList()
 	end
 
 	self._open = true
-	self._arrow.Text = "-"
+	Tween(self._arrow, { Rotation = 45 }, 0.15, Enum.EasingStyle.Quint)
+	window:_paint(self._arrow, { TextColor3 = "Accent" })
 	window:_openPopover(outer, self._box, function()
 		self._open = false
 		self._renderList = nil
-		self._arrow.Text = "+"
+		Tween(self._arrow, { Rotation = 0 }, 0.15, Enum.EasingStyle.Quint)
+		window:_paint(self._arrow, { TextColor3 = "TextDim" })
 	end)
 end
 
@@ -3196,11 +3222,17 @@ function Section.new(tab, column, p)
 		window:_paint(icon, { ImageColor3 = "Accent" })
 		inset = 24
 	end
+	if not image then
+		-- little accent tick in front of the title
+		window:_frame({ Name = "Tick", Size = UDim2.fromOffset(2, 10), Position = UDim2.new(0, 8, 0.5, -5), Parent = header }, { BackgroundColor3 = "Accent" })
+		inset = 15
+	end
 	self._title = window:_label({ Size = UDim2.new(1, -inset, 1, 0), Position = UDim2.fromOffset(inset, 0), Parent = header }, "Text")
 	window:_text(self._title, self.name)
 	self._header = header
 
 	local divider = window:_frame({ Size = UDim2.new(1, -16, 0, 1), Position = UDim2.new(0, 8, 1, -1), Parent = header }, { BackgroundColor3 = "Border" })
+	window:_frame({ Name = "Underline", Size = UDim2.new(0, 28, 1, 0), Parent = divider }, { BackgroundColor3 = "Accent" })
 	self._divider = divider
 
 	local content = window:_frame({
@@ -3472,6 +3504,16 @@ local BuiltinTranslations = {
 		["Accent colour"] = "Color de acento",
 		["Link copied"] = "Enlace copiado",
 		["Copy this link"] = "Copia este enlace",
+		["Appearance"] = "Apariencia",
+		["Interface"] = "Interfaz",
+		["Rainbow top bar"] = "Barra arcoíris",
+		["UI scale"] = "Escala de la interfaz",
+		["Animations"] = "Animaciones",
+		["Keep on screen"] = "Mantener en pantalla",
+		["The menu can't be dragged off the edge"] = "El menú no se puede arrastrar fuera del borde",
+		["Lock position"] = "Bloquear posición",
+		["Notifications"] = "Notificaciones",
+		["Center window"] = "Centrar ventana",
 	},
 	pt = {
 		["Settings"] = "Configurações",
@@ -3547,6 +3589,16 @@ local BuiltinTranslations = {
 		["Accent colour"] = "Cor de destaque",
 		["Link copied"] = "Link copiado",
 		["Copy this link"] = "Copie este link",
+		["Appearance"] = "Aparência",
+		["Interface"] = "Interface",
+		["Rainbow top bar"] = "Barra arco-íris",
+		["UI scale"] = "Escala da interface",
+		["Animations"] = "Animações",
+		["Keep on screen"] = "Manter na tela",
+		["The menu can't be dragged off the edge"] = "O menu não pode ser arrastado para fora da borda",
+		["Lock position"] = "Travar posição",
+		["Notifications"] = "Notificações",
+		["Center window"] = "Centralizar janela",
 	},
 	fr = {
 		["Settings"] = "Paramètres",
@@ -3622,6 +3674,16 @@ local BuiltinTranslations = {
 		["Accent colour"] = "Couleur d'accent",
 		["Link copied"] = "Lien copié",
 		["Copy this link"] = "Copie ce lien",
+		["Appearance"] = "Apparence",
+		["Interface"] = "Interface",
+		["Rainbow top bar"] = "Barre arc-en-ciel",
+		["UI scale"] = "Taille de l'interface",
+		["Animations"] = "Animations",
+		["Keep on screen"] = "Garder à l'écran",
+		["The menu can't be dragged off the edge"] = "Le menu ne peut pas sortir de l'écran",
+		["Lock position"] = "Verrouiller la position",
+		["Notifications"] = "Notifications",
+		["Center window"] = "Centrer la fenêtre",
 	},
 	de = {
 		["Settings"] = "Einstellungen",
@@ -3697,6 +3759,16 @@ local BuiltinTranslations = {
 		["Accent colour"] = "Akzentfarbe",
 		["Link copied"] = "Link kopiert",
 		["Copy this link"] = "Kopier diesen Link",
+		["Appearance"] = "Aussehen",
+		["Interface"] = "Oberfläche",
+		["Rainbow top bar"] = "Regenbogen-Leiste",
+		["UI scale"] = "UI-Größe",
+		["Animations"] = "Animationen",
+		["Keep on screen"] = "Im Bildschirm halten",
+		["The menu can't be dragged off the edge"] = "Das Menü kann nicht aus dem Bild gezogen werden",
+		["Lock position"] = "Position sperren",
+		["Notifications"] = "Benachrichtigungen",
+		["Center window"] = "Fenster zentrieren",
 	},
 	ru = {
 		["Settings"] = "Настройки",
@@ -3772,6 +3844,16 @@ local BuiltinTranslations = {
 		["Accent colour"] = "Цвет акцента",
 		["Link copied"] = "Ссылка скопирована",
 		["Copy this link"] = "Скопируй эту ссылку",
+		["Appearance"] = "Внешний вид",
+		["Interface"] = "Интерфейс",
+		["Rainbow top bar"] = "Радужная полоса",
+		["UI scale"] = "Масштаб интерфейса",
+		["Animations"] = "Анимации",
+		["Keep on screen"] = "Не выходить за экран",
+		["The menu can't be dragged off the edge"] = "Меню нельзя утащить за край экрана",
+		["Lock position"] = "Закрепить позицию",
+		["Notifications"] = "Уведомления",
+		["Center window"] = "По центру",
 	},
 	tr = {
 		["Settings"] = "Ayarlar",
@@ -3847,6 +3929,16 @@ local BuiltinTranslations = {
 		["Accent colour"] = "Vurgu rengi",
 		["Link copied"] = "Link kopyalandı",
 		["Copy this link"] = "Bu linki kopyala",
+		["Appearance"] = "Görünüm",
+		["Interface"] = "Arayüz",
+		["Rainbow top bar"] = "Gökkuşağı çubuğu",
+		["UI scale"] = "Arayüz boyutu",
+		["Animations"] = "Animasyonlar",
+		["Keep on screen"] = "Ekranda tut",
+		["The menu can't be dragged off the edge"] = "Menü ekranın dışına sürüklenemez",
+		["Lock position"] = "Konumu kilitle",
+		["Notifications"] = "Bildirimler",
+		["Center window"] = "Pencereyi ortala",
 	},
 	vi = {
 		["Settings"] = "Cài đặt",
@@ -3922,6 +4014,16 @@ local BuiltinTranslations = {
 		["Accent colour"] = "Màu nhấn",
 		["Link copied"] = "Đã sao chép link",
 		["Copy this link"] = "Sao chép link này",
+		["Appearance"] = "Giao diện",
+		["Interface"] = "Tương tác",
+		["Rainbow top bar"] = "Thanh cầu vồng",
+		["UI scale"] = "Tỉ lệ giao diện",
+		["Animations"] = "Hiệu ứng",
+		["Keep on screen"] = "Giữ trong màn hình",
+		["The menu can't be dragged off the edge"] = "Không thể kéo menu ra khỏi màn hình",
+		["Lock position"] = "Khóa vị trí",
+		["Notifications"] = "Thông báo",
+		["Center window"] = "Căn giữa cửa sổ",
 	},
 	id = {
 		["Settings"] = "Pengaturan",
@@ -3997,6 +4099,16 @@ local BuiltinTranslations = {
 		["Accent colour"] = "Warna aksen",
 		["Link copied"] = "Link disalin",
 		["Copy this link"] = "Salin link ini",
+		["Appearance"] = "Tampilan",
+		["Interface"] = "Antarmuka",
+		["Rainbow top bar"] = "Bar pelangi",
+		["UI scale"] = "Skala UI",
+		["Animations"] = "Animasi",
+		["Keep on screen"] = "Tetap di layar",
+		["The menu can't be dragged off the edge"] = "Menu tidak bisa diseret keluar layar",
+		["Lock position"] = "Kunci posisi",
+		["Notifications"] = "Notifikasi",
+		["Center window"] = "Tengahkan jendela",
 	},
 	pl = {
 		["Settings"] = "Ustawienia",
@@ -4072,8 +4184,19 @@ local BuiltinTranslations = {
 		["Accent colour"] = "Kolor akcentu",
 		["Link copied"] = "Skopiowano link",
 		["Copy this link"] = "Skopiuj ten link",
+		["Appearance"] = "Wygląd",
+		["Interface"] = "Interfejs",
+		["Rainbow top bar"] = "Tęczowy pasek",
+		["UI scale"] = "Skala interfejsu",
+		["Animations"] = "Animacje",
+		["Keep on screen"] = "Trzymaj na ekranie",
+		["The menu can't be dragged off the edge"] = "Menu nie wyjedzie poza ekran",
+		["Lock position"] = "Zablokuj pozycję",
+		["Notifications"] = "Powiadomienia",
+		["Center window"] = "Wyśrodkuj okno",
 	},
 }
+
 
 
 
@@ -4944,6 +5067,10 @@ local function AutoDuration(...)
 end
 
 function Window:Notify(props)
+	if self._notificationsOff then
+		-- turned off in settings: hand back something that behaves like a notification
+		return { close = function() end, slot = nil }
+	end
 	local p = LowerKeys(props)
 	local title = self:_t(Pick(p, "Notification", "title"))
 	local content = Pick(p, nil, "content", "text", "description")
@@ -5540,24 +5667,13 @@ function Window:_buildSettings()
 	local tab = self:CreateTab({ name = "Settings", _system = true, _order = 1e6 })
 	self._settingsTab = tab
 
-	local menu = tab:CreateSection({ name = "Menu", side = "left" })
-	menu:CreateKeybind({
-		name = "Menu key",
-		flag = "OnyxMenuKey",
-		value = self.toggleKey,
-		_menuKey = true,
-		onChanged = function(key)
-			if key then
-				self.toggleKey = key
-				self:_refreshPill()
-			end
-		end,
-	})
+	-- left: how it looks, how it behaves. right: menu, configs, about
+	local look = tab:CreateSection({ name = "Appearance", side = "left" })
 	local themeOptions = CopyList(ThemeNames)
 	if self._customTheme then
 		table.insert(themeOptions, 1, "custom")
 	end
-	self._themeDropdown = menu:CreateDropdown({
+	self._themeDropdown = look:CreateDropdown({
 		name = "Theme",
 		flag = "OnyxTheme",
 		options = themeOptions,
@@ -5572,14 +5688,17 @@ function Window:_buildSettings()
 			elseif Themes[name] then
 				self:ChangeTheme(name)
 			end
-			-- a new theme brings its own accent, show it in the picker
+			-- a new theme brings its own accent and top bar, show them
 			if self._accentPicker and not self._accentPicker._removed then
 				self._accentPicker:Set(self.Theme.Accent, true)
+			end
+			if self._rainbowToggle and not self._rainbowToggle._removed then
+				self._rainbowToggle:Set(self.Theme.Rainbow == true, true)
 			end
 		end,
 	})
 	if self._accentSetting then
-		self._accentPicker = menu:CreateColorPicker({
+		self._accentPicker = look:CreateColorPicker({
 			name = "Accent colour",
 			flag = "OnyxAccent",
 			color = self.Theme.Accent,
@@ -5588,13 +5707,23 @@ function Window:_buildSettings()
 			end,
 		})
 	end
+	self._rainbowToggle = look:CreateToggle({
+		name = "Rainbow top bar",
+		flag = "OnyxRainbow",
+		value = self.Theme.Rainbow == true,
+		callback = function(on)
+			if on ~= (self.Theme.Rainbow == true) then
+				self:SetRainbow(on)
+			end
+		end,
+	})
 	if self._languageSetting then
 		local names = {}
 		for _, language in ipairs(self:_languageList()) do
 			table.insert(names, language.name)
 		end
 		local current = self:_currentLanguage()
-		self._languageDropdown = menu:CreateDropdown({
+		self._languageDropdown = look:CreateDropdown({
 			name = "Language",
 			flag = "OnyxLanguage",
 			options = names,
@@ -5612,7 +5741,55 @@ function Window:_buildSettings()
 			end,
 		})
 	end
-	self._infoToggle = menu:CreateToggle({
+	self._scaleSlider = look:CreateSlider({
+		name = "UI scale",
+		flag = "OnyxScale",
+		range = { 50, 150 },
+		increment = 5,
+		value = 100,
+		suffix = "%",
+		callback = function(value, dragging)
+			if not dragging then
+				self:SetUIScale(value / 100)
+			end
+		end,
+	})
+	self._animationToggle = look:CreateToggle({
+		name = "Animations",
+		flag = "OnyxAnimations",
+		value = self._animate,
+		callback = function(on)
+			self:SetAnimations(on)
+		end,
+	})
+
+	local behaviour = tab:CreateSection({ name = "Interface", side = "left" })
+	self._keepToggle = behaviour:CreateToggle({
+		name = "Keep on screen",
+		description = "The menu can't be dragged off the edge",
+		flag = "OnyxKeepOnScreen",
+		value = self._keepOnScreen,
+		callback = function(on)
+			self:SetKeepOnScreen(on)
+		end,
+	})
+	self._lockToggle = behaviour:CreateToggle({
+		name = "Lock position",
+		flag = "OnyxLockPosition",
+		value = self._lockPosition,
+		callback = function(on)
+			self:SetLockPosition(on)
+		end,
+	})
+	self._notifyToggle = behaviour:CreateToggle({
+		name = "Notifications",
+		flag = "OnyxNotifications",
+		value = true,
+		callback = function(on)
+			self:SetNotifications(on)
+		end,
+	})
+	self._infoToggle = behaviour:CreateToggle({
 		name = "Info bar",
 		description = "FPS, ping, executor and time",
 		flag = "OnyxInfoBar",
@@ -5620,6 +5797,26 @@ function Window:_buildSettings()
 		callback = function(on)
 			if on ~= (self.infoBarVisible == true) then
 				self:SetInfoBar(on)
+			end
+		end,
+	})
+	behaviour:CreateButton({
+		name = "Center window",
+		callback = function()
+			self:CenterWindow()
+		end,
+	})
+
+	local menu = tab:CreateSection({ name = "Menu", side = "right" })
+	menu:CreateKeybind({
+		name = "Menu key",
+		flag = "OnyxMenuKey",
+		value = self.toggleKey,
+		_menuKey = true,
+		onChanged = function(key)
+			if key then
+				self.toggleKey = key
+				self:_refreshPill()
 			end
 		end,
 	})
@@ -5704,7 +5901,7 @@ function Window:_buildSettings()
 		end
 	end
 
-	local info = tab:CreateSection({ name = "About", side = self._config and "right" or "left" })
+	local info = tab:CreateSection({ name = "About", side = "right" })
 	self._statusRow = Elements.StatusRow(info, { name = "Status" })
 	self._statusRow:Set(self.status)
 	self._aboutText = info:CreateText({ text = self:_aboutLine() })
@@ -5740,15 +5937,86 @@ function Window:_fitToScreen()
 		return
 	end
 	local scale = self._userScale or math.min(1, (screen.X - 16) / self._size.X, (screen.Y - 16) / self._size.Y)
-	scale = math.clamp(scale, 0.45, 2)
+	scale = math.clamp(scale * (self._scaleMultiplier or 1), 0.45, 2)
 	self._scale = scale
 	self._uiScale.Scale = scale
+	self:_pullOnScreen()
+end
+
+-- where the window may go. with keep on screen it stays fully inside, otherwise
+-- at least the title bar stays grabbable
+function Window:_clampPosition(x, y)
+	local screen = self._gui.AbsoluteSize
+	if screen.X <= 0 then
+		return x, y
+	end
+	local size = self._main.AbsoluteSize
+	if self._keepOnScreen then
+		return math.clamp(x, 0, math.max(0, screen.X - size.X)), math.clamp(y, 0, math.max(0, screen.Y - size.Y))
+	end
+	return math.clamp(x, -size.X + 60, screen.X - 60), math.clamp(y, 0, screen.Y - 30)
+end
+
+-- slides the window back inside the screen if part of it is off the edge
+function Window:_pullOnScreen(animate)
+	local main = self._main
+	if not main or main.AnchorPoint.X ~= 0 then
+		return
+	end
+	local position = LocalPosition(main, self._gui)
+	local x, y = self:_clampPosition(position.X, position.Y)
+	if math.abs(x - position.X) > 0.5 or math.abs(y - position.Y) > 0.5 then
+		if animate then
+			Tween(main, { Position = UDim2.fromOffset(x, y) }, 0.25, Enum.EasingStyle.Quint)
+		else
+			main.Position = UDim2.fromOffset(x, y)
+		end
+	end
+end
+
+-- back to the middle of the screen
+function Window:CenterWindow()
 	local main = self._main
 	if main.AnchorPoint.X == 0 then
 		local position, size = LocalPosition(main, self._gui), main.AbsoluteSize
-		local x = math.clamp(position.X, 0, math.max(0, screen.X - size.X))
-		local y = math.clamp(position.Y, 0, math.max(0, screen.Y - size.Y))
-		main.Position = UDim2.fromOffset(x, y)
+		main.AnchorPoint = Vector2.new(0.5, 0.5)
+		main.Position = UDim2.fromOffset(position.X + size.X / 2, position.Y + size.Y / 2)
+	end
+	if self._animate then
+		Tween(main, { Position = UDim2.fromScale(0.5, 0.5) }, 0.3, Enum.EasingStyle.Quint)
+	else
+		main.Position = UDim2.fromScale(0.5, 0.5)
+	end
+end
+
+function Window:SetKeepOnScreen(on)
+	self._keepOnScreen = on ~= false
+	self:_pullOnScreen(true)
+end
+
+function Window:SetLockPosition(on)
+	self._lockPosition = on == true
+end
+
+-- 1 = normal size. multiplies the automatic fit
+function Window:SetUIScale(multiplier)
+	self._scaleMultiplier = math.clamp(tonumber(multiplier) or 1, 0.5, 1.5)
+	self:_fitToScreen()
+end
+
+function Window:SetAnimations(on)
+	self._animate = on ~= false
+end
+
+function Window:SetNotifications(on)
+	self._notificationsOff = on == false
+end
+
+function Window:SetRainbow(on)
+	self.Theme.Rainbow = on == true
+	self:_refreshAccentBar()
+	if self._rainbowToggle and not self._rainbowToggle._removed and self._rainbowToggle.value ~= self.Theme.Rainbow then
+		self._rainbowToggle:Set(self.Theme.Rainbow, true)
 	end
 end
 
@@ -7025,6 +7293,10 @@ function Onyx:CreateWindow(props)
 	window.locale = Pick(p, nil, "language", "locale") or (LocalPlayer and LocalPlayer.LocaleId) or "en-us"
 	window._languageSetting = Pick(p, true, "languagesetting") ~= false
 	window._accentSetting = Pick(p, true, "accentsetting") ~= false
+	window._keepOnScreen = Pick(p, true, "keeponscreen") ~= false
+	window._lockPosition = Pick(p, false, "lockposition") == true
+	window._scaleMultiplier = 1
+	window._toggleStyle = Pick(p, nil, "togglestyle")
 	window._languageCodes = Pick(p, nil, "languages")
 	local languageNames = Pick(p, nil, "languagenames")
 	if type(languageNames) == "table" then
@@ -7353,11 +7625,15 @@ function Onyx:CreateWindow(props)
 		window:_closePopover()
 	end, function()
 		resizeStart = nil
+		window:_pullOnScreen(true)
 	end)
 
 	-- Window dragging
 	local dragStart, dragOrigin
 	window:_draggable(nil, header, function(position)
+		if window._lockPosition then
+			return
+		end
 		if not dragStart then
 			dragStart, dragOrigin = position, LocalPosition(main, gui)
 			-- swap the centre anchor for top-left before moving
@@ -7367,11 +7643,7 @@ function Onyx:CreateWindow(props)
 		end
 		local delta = position - dragStart
 		local screen = gui.AbsoluteSize
-		local x, y = dragOrigin.X + delta.X, dragOrigin.Y + delta.Y
-		if screen.X > 0 then
-			x = math.clamp(x, -main.AbsoluteSize.X + 60, screen.X - 60)
-			y = math.clamp(y, 0, screen.Y - 30)
-		end
+		local x, y = window:_clampPosition(dragOrigin.X + delta.X, dragOrigin.Y + delta.Y)
 		main.Position = UDim2.fromOffset(x, y)
 	end, function()
 		dragStart = nil

@@ -32,6 +32,10 @@ section:CreateButton({
 
 ## Toggle
 
+Two looks: the default checkbox, or a sliding switch with `style = "switch"` (or `toggleStyle = "switch"` on the window for all of them). Both do a small pop when clicked.
+
+![switches](images/switches.png)
+
 ```lua
 local esp = section:CreateToggle({
 	name = "ESP",
