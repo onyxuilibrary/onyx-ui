@@ -85,6 +85,9 @@ Full guide with every option and fixes for common problems: [docs/status.md](doc
 - discord button with the discord logo (copies the invite and opens it in discord)
 - "join our discord" prompt with countdown buttons
 - language picker in settings, 10 languages built in, add your own
+- loading screen with a progress bar
+- images and image galleries (skin pickers), with web links downloaded and cached for you
+- open/close animations, and a small draggable button to open the menu on mobile (Delta etc.)
 - notifications, toasts and popups
 - a settings tab with menu key, theme, configs and unload built in
 - mobile: launcher button, scales to fit the screen, multi-touch safe sliders
@@ -97,8 +100,10 @@ Full guide with every option and fixes for common problems: [docs/status.md](doc
 | sidebar layout, ember theme, colour picker | settings tab with script status |
 | ![key system](docs/images/keysystem.png) | ![changelog](docs/images/changelog.png) |
 | key system | changelog on execute |
-| ![discord prompt](docs/images/discord.png) | |
-| discord prompt with countdown buttons | |
+| ![discord prompt](docs/images/discord.png) | ![skins](docs/images/skins.png) |
+| discord prompt with countdown buttons | image gallery for skins (placeholder pictures) |
+| ![loading](docs/images/loading.png) | |
+| loading screen | |
 
 ![mobile](docs/images/mobile.png)
 

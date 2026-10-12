@@ -231,6 +231,28 @@ section:CreateDiscord({ invite = "yourcode", name = "Support server" })
 section:CreateDiscord()   -- uses the window's discord option
 ```
 
+## Image
+
+```lua
+section:CreateImage({ image = "https://raw.githubusercontent.com/you/repo/main/pic.png", height = 120 })
+```
+
+Takes asset ids, web links (downloaded and cached for you) or files. See [images](images.md).
+
+## Image gallery
+
+A grid of pictures to pick from, made for skin changers.
+
+```lua
+section:CreateImageGallery({
+	name = "Knife skin",
+	items = { { name = "Fade", image = "https://.../fade.png" }, { name = "Howl", image = "https://.../howl.png" } },
+	callback = function(name, item) print(name) end,
+})
+```
+
+Search box, multi pick, rarity colours and the rest are in [images](images.md#image-gallery-skin-picker).
+
 ## Divider
 
 ```lua

@@ -34,6 +34,8 @@ local window = Onyx:CreateWindow({
 | `keySystem` | | key prompt before the menu opens, see [key system](key-system.md) |
 | `notice` | | popup shown when the script runs, see [messages](messages.md) |
 | `changelog` | | changelog shown when the script runs |
+| `loadingScreen` | | `true` or a table, loading card before the menu opens, see below |
+| `animations` | `true` | `false` turns off the open/close pop |
 | `mobile` | auto | force the mobile layout on/off |
 | `scale` | auto | fixed UI scale, normally it shrinks itself to fit the screen |
 | `showName` | window name | text on the launcher button |
@@ -61,6 +63,9 @@ window:Navigate("Settings")              -- tab handle or name
 
 window:SetStatus("updating", "fixing aimbot")
 window:SetInfoBar(false)                 -- hide / show the info bar
+window:SetLoading("Loading skins", 0.5)  -- loading screen text / progress
+window:FinishLoading()
+window:PreloadImages({ "https://..." })
 window:OpenDiscord()                     -- same as clicking the discord button
 window:ChangeTheme("ember")
 window:SetProfile("premium")
@@ -103,6 +108,56 @@ Added automatically unless you pass `settingsTab = false`. It has:
 - unload button (asks first)
 - configurations: name box, saved list, save / load / delete / refresh (only if `configuration` is set)
 - about: script status, library version, executor name, discord button (if `discord` is set)
+
+## Loading screen
+
+![loading](images/loading.png)
+
+A small card with your hub name and a progress bar, shown before the menu opens. When it's done it fades out and the menu pops in. Popups like the discord prompt and changelog wait until it's gone.
+
+Simplest, it fills up over 1.5 seconds:
+
+```lua
+Onyx:CreateWindow({ name = "Noic Hub", loadingScreen = true })
+```
+
+Download your pictures while it's up (the bar follows the downloads):
+
+```lua
+Onyx:CreateWindow({
+	name = "Noic Hub",
+	loadingScreen = { images = { "https://.../dragon.png", "https://.../fade.png" } },
+})
+```
+
+Or drive it yourself while your script sets things up:
+
+```lua
+local window = Onyx:CreateWindow({ name = "Noic Hub", loadingScreen = { manual = true } })
+
+window:SetLoading("Finding the game modules...", 0.2)
+-- your setup
+window:SetLoading("Downloading skins...", 0.5)
+window:PreloadImages(skinLinks)            -- moves the bar on its own
+window:SetLoading("Building the menu...", 0.9)
+-- make your tabs here, nobody sees them until you finish
+window:FinishLoading()
+```
+
+All the options:
+
+| option | default | what it does |
+|---|---|---|
+| `title` | window name | big text |
+| `subtitle` | window subtitle | grey text next to it |
+| `logo` | | image next to the title (id, link or file) |
+| `text` | `Loading...` | the line under the bar |
+| `duration` | `1.5` | seconds the bar takes to fill (automatic mode) |
+| `images` | | links to download first, the bar shows their progress |
+| `manual` | `false` | stay up until you call `window:FinishLoading()` |
+| `timeout` | `30` | manual mode closes itself after this many seconds, so nobody gets stuck |
+
+`SetLoading(text, progress)`: progress goes from 0 to 1, pass `nil` for either one to leave it alone. `window:IsLoading()` tells you if it's still up. With a key system, the key prompt comes first, then the loading screen.
 
 ## Info bar
 

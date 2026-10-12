@@ -276,6 +276,7 @@ local enumNames = {
 	SortOrder = { "LayoutOrder", "Name" },
 	HorizontalAlignment = { "Left", "Center", "Right" },
 	VerticalAlignment = { "Top", "Center", "Bottom" },
+	ScaleType = { "Stretch", "Slice", "Tile", "Fit", "Crop" },
 	EasingStyle = { "Linear", "Sine", "Back", "Quad", "Quart", "Quint", "Bounce", "Elastic", "Exponential", "Circular", "Cubic" },
 	EasingDirection = { "In", "Out", "InOut" },
 	ScrollingDirection = { "X", "Y", "XY" },
@@ -357,7 +358,7 @@ P.Text = {
 	TextBounds = "readonly", LineHeight = "number", TextStrokeTransparency = "number",
 }
 P.Button = { AutoButtonColor = "boolean", Modal = "boolean", Selected = "boolean" }
-P.Image = { Image = "string", ImageColor3 = "Color3", ImageTransparency = "number" }
+P.Image = { Image = "string", ImageColor3 = "Color3", ImageTransparency = "number", ScaleType = E("ScaleType") }
 
 local Classes = {
 	Frame = { props = P.GuiBase, gui = true },
@@ -1035,7 +1036,12 @@ local services = {
 
 game = {
 	GetService = function(_, name) return services[name] or error("no service " .. name) end,
-	HttpGet = function() error("HttpGet unavailable in mock") end,
+	HttpGet = function(_, url)
+		local body = Mock.web[url]
+		if body == nil then error("HttpGet unavailable in mock: " .. tostring(url)) end
+		Mock.downloads = Mock.downloads + 1
+		return body
+	end,
 }
 workspace = { CurrentCamera = { ViewportSize = VIEW } }
 
@@ -1048,6 +1054,14 @@ Mock.RunService = RunService
 --------------------------------------------------------------------------------
 
 Mock.files, Mock.folders = {}, {}
+-- web files for HttpGet, and the executor's getcustomasset
+Mock.web = {}
+Mock.downloads = 0
+function getcustomasset(path)
+	assert(Mock.files[path] ~= nil, "getcustomasset: no file " .. tostring(path))
+	return "rbxasset://custom/" .. path
+end
+
 function writefile(path, data)
 	local folder = path:match("^(.*)/[^/]+$")
 	if folder and not Mock.folders[folder] then error("folder does not exist: " .. folder) end

@@ -6,7 +6,7 @@
 ]]
 
 local Onyx = {
-	Version = "1.4.0",
+	Version = "1.5.0",
 	Windows = {},
 }
 
@@ -65,15 +65,23 @@ local function Pick(p, default, ...)
 	return default
 end
 
+local ApplyImage -- defined in the Images section
+
 local function Create(className, props, children)
 	local instance = Instance.new(className)
-	local parent
+	local parent, image
 	for key, value in pairs(props or {}) do
 		if key == "Parent" then
 			parent = value
+		elseif key == "Image" and type(value) == "string" and value ~= "" and not string.match(value, "^rbx") then
+			-- web link or file: downloaded and filled in once it's ready
+			image = value
 		else
 			instance[key] = value
 		end
+	end
+	if image then
+		ApplyImage(instance, image)
 	end
 	for _, child in ipairs(children or {}) do
 		child.Parent = instance
@@ -217,6 +225,10 @@ local function IconImage(icon)
 			return "rbxassetid://" .. icon
 		end
 		if string.match(icon, "^rbx") or string.match(icon, "^https?://") then
+			return icon
+		end
+		-- a file in the executor's workspace, like "MyHub/skins/ak.png"
+		if string.match(string.lower(icon), "%.png$") or string.match(string.lower(icon), "%.jpe?g$") then
 			return icon
 		end
 	end
@@ -597,6 +609,156 @@ function FileSystem.EnsureFolder(path)
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Images
+--------------------------------------------------------------------------------
+
+-- Roblox only draws rbxassetid / rbxasset / rbxthumb images itself. web links are
+-- downloaded into the executor's workspace once (Onyx/Images, so the next run is
+-- instant) and shown through getcustomasset, which Delta, Wave, Volt and co. have
+
+local ImageCache = {} -- source -> content id, "" if it failed
+local ImageWaiting = {} -- source -> callbacks waiting on a download
+local ImageQueue = {}
+local imageWorkers = 0
+local MAX_IMAGE_DOWNLOADS = 3 -- a few at a time so phones don't hitch
+local warnedImages = false
+
+-- file name for a link. two small hashes so the numbers stay exact everywhere
+local function HashText(text)
+	local a, b = 5381, 7919
+	for i = 1, #text do
+		local byte = string.byte(text, i)
+		a = (a * 33 + byte) % 16777213
+		b = (b * 31 + byte) % 16777199
+	end
+	return string.format("%06x%06x", math.floor(a), math.floor(b))
+end
+
+local function CustomAsset(path)
+	local loader = getcustomasset or getsynasset
+	if type(loader) ~= "function" then
+		return nil
+	end
+	local ok, id = pcall(loader, path)
+	if ok and type(id) == "string" and id ~= "" then
+		return id
+	end
+	return nil
+end
+
+local function ImagePath(url)
+	local clean = string.lower((string.gsub(url, "[?#].*$", "")))
+	local ext = string.match(clean, "%.(%a+)$")
+	if ext ~= "png" and ext ~= "jpg" and ext ~= "jpeg" then
+		ext = "png"
+	end
+	return "Onyx/Images/" .. HashText(url) .. "." .. ext
+end
+
+local function FinishImage(src, id)
+	ImageCache[src] = id or ""
+	local waiting = ImageWaiting[src]
+	ImageWaiting[src] = nil
+	for _, callback in ipairs(waiting or {}) do
+		task.spawn(callback, id)
+	end
+end
+
+local function PumpImages()
+	while imageWorkers < MAX_IMAGE_DOWNLOADS and #ImageQueue > 0 do
+		local src = table.remove(ImageQueue, 1)
+		imageWorkers = imageWorkers + 1
+		task.spawn(function()
+			local path = ImagePath(src)
+			local ok, body = pcall(function()
+				return game:HttpGet(src)
+			end)
+			local id
+			if ok and type(body) == "string" and #body > 0 then
+				pcall(function()
+					FileSystem.EnsureFolder("Onyx/Images")
+					writefile(path, body)
+				end)
+				id = CustomAsset(path)
+			end
+			if not id then
+				warn("[Onyx] couldn't load image " .. src)
+			end
+			imageWorkers = imageWorkers - 1
+			FinishImage(src, id)
+			PumpImages()
+		end)
+	end
+end
+
+-- calls back with something you can put in .Image, or nil if it can't be shown
+local function ResolveImage(src, callback)
+	src = IconImage(src)
+	if not src then
+		callback(nil)
+		return
+	end
+	if string.match(src, "^rbx") then
+		callback(src)
+		return
+	end
+	local cached = ImageCache[src]
+	if cached then
+		callback(cached ~= "" and cached or nil)
+		return
+	end
+	if ImageWaiting[src] then
+		table.insert(ImageWaiting[src], callback)
+		return
+	end
+	if type(getcustomasset or getsynasset) ~= "function" or not FileSystem.Available() then
+		if not warnedImages then
+			warnedImages = true
+			warn("[Onyx] this executor can't show downloaded images (it needs getcustomasset and writefile)")
+		end
+		ImageCache[src] = ""
+		callback(nil)
+		return
+	end
+	if not string.match(src, "^https?://") then
+		local id = isfile(src) and CustomAsset(src) or nil
+		ImageCache[src] = id
+		callback(id)
+		return
+	end
+	local path = ImagePath(src)
+	if isfile(path) then
+		local id = CustomAsset(path)
+		if id then
+			ImageCache[src] = id
+			callback(id)
+			return
+		end
+	end
+	ImageWaiting[src] = { callback }
+	table.insert(ImageQueue, src)
+	PumpImages()
+end
+
+-- puts any image source on an ImageLabel/ImageButton once it's ready. if the image
+-- is changed again before a download finishes, the old one is ignored
+local ImageTargets = setmetatable({}, { __mode = "k" })
+ApplyImage = function(target, src, onDone)
+	ImageTargets[target] = src or false
+	ResolveImage(src, function(id)
+		if ImageTargets[target] ~= (src or false) then
+			return
+		end
+		pcall(function()
+			target.Image = id or ""
+		end)
+		if onDone then
+			onDone(id)
+		end
+	end)
+end
+
 local function Serialize(value)
 	local kind = typeof(value)
 	if kind == "Color3" then
@@ -797,7 +959,7 @@ local function NewElement(class, holder, p, kind, rowHeight, labelInset)
 
 	-- indent so labels line up with toggle text. buttons and plain text stay full
 	-- width, otherwise they sit lopsided in the section
-	local flush = { Divider = true, SubHeader = true, Button = true, Text = true, StatusRow = true }
+	local flush = { Divider = true, SubHeader = true, Button = true, Text = true, StatusRow = true, Image = true, ImageGallery = true }
 	if (labelInset or 0) == 0 and holder.kind ~= "row" and not flush[kind] then
 		Padding(stack, 0, 0, 0, GUTTER)
 	end
@@ -2501,6 +2663,274 @@ function Elements.Status(holder, p)
 	return self
 end
 
+-- Image -----------------------------------------------------------------------
+
+-- section:CreateImage({ image = 123 / "rbxassetid://" / "https://..." / "folder/file.png" })
+local ImageElement = ElementClass()
+
+local function ScaleTypeOf(name, default)
+	local ok, value = pcall(function()
+		return Enum.ScaleType[name]
+	end)
+	return ok and value or default
+end
+
+function Elements.Image(holder, p)
+	local hasName = Pick(p, nil, "name", "title") ~= nil
+	local self = NewElement(ImageElement, holder, p, "Image", hasName and 15 or 0)
+	local window = self.window
+	self.height = tonumber(Pick(p, 120, "height")) or 120
+	local slot = self:_slot(self.height, 3)
+	local _, inner = window:_box(slot, UDim2.fromScale(1, 1), nil, "Background")
+	self._picture = Create("ImageLabel", {
+		Name = "Picture",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -8, 1, -8),
+		Position = UDim2.fromOffset(4, 4),
+		ScaleType = ScaleTypeOf(tostring(Pick(p, "Fit", "scaletype", "fit")), Enum.ScaleType.Fit),
+		Parent = inner,
+	})
+	self._state = window:_label({ Size = UDim2.fromScale(1, 1), TextSize = 11, TextXAlignment = Enum.TextXAlignment.Center, Parent = inner }, "Placeholder")
+	self:Set(Pick(p, nil, "image", "src", "url", "asset"))
+	return Mount(self, self.height + (hasName and 22 or 6))
+end
+
+function ImageElement:Set(src)
+	self.image = src
+	local window = self.window
+	self._state.Text = src and window:_t("Loading...") or ""
+	ApplyImage(self._picture, src, function(id)
+		self._state.Text = (id or not src) and "" or "x"
+	end)
+end
+
+-- Image gallery -----------------------------------------------------------------
+
+-- a grid of picture tiles you pick from, made for skin changers.
+-- items: { "Name", { name = "Dragon Lore", image = "https://...", color = Color3 }, ... }
+local Gallery = ElementClass()
+
+local function GalleryItem(item)
+	if type(item) ~= "table" then
+		return { name = tostring(item) }
+	end
+	local i = LowerKeys(item)
+	return {
+		name = tostring(Pick(i, "?", "name", "title", "text")),
+		image = Pick(i, nil, "image", "icon", "src", "url"),
+		color = ToColor3(Pick(i, nil, "color", "rarity")),
+		raw = item,
+	}
+end
+
+function Elements.ImageGallery(holder, p)
+	local hasName = Pick(p, nil, "name", "title") ~= nil
+	local self = NewElement(Gallery, holder, p, "ImageGallery", hasName and 15 or 0)
+	local window = self.window
+	self.callback = Pick(p, nil, "callback")
+	self.multi = Pick(p, false, "multi", "multiselect", "multipleoptions") == true
+	self.columns = math.clamp(math.floor(tonumber(Pick(p, window._mobile and 2 or 3, "columns")) or 3), 1, 8)
+	self.tileHeight = tonumber(Pick(p, window._mobile and 92 or 76, "tileheight")) or 76
+	self.gap = 6
+	self.value = {}
+	self.items = {}
+	self._tiles = {}
+	self._filter = ""
+
+	local items = Pick(p, {}, "items", "options", "images", "skins") or {}
+	local search = Pick(p, nil, "search")
+	if search == nil then
+		search = #items > 12
+	end
+	if search then
+		local boxOuter, boxInner = window:_box(self:_slot(22, 3), UDim2.fromScale(1, 1), nil, "Element")
+		local box = window:_textbox({ Text = "", Size = UDim2.new(1, -12, 1, 0), Position = UDim2.fromOffset(6, 0), TextSize = 12, Parent = boxInner })
+		window:_text(box, "Search...", "PlaceholderText")
+		self:_connect(box:GetPropertyChangedSignal("Text"), function()
+			self._filter = string.lower(box.Text)
+			self:_layout()
+		end)
+		self._search = box
+		boxOuter.Name = "Search"
+	end
+	self._grid = window:_frame({ Name = "Grid", Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1, LayoutOrder = 4, Parent = self.stack })
+
+	self:Refresh(items)
+	local start = Pick(p, nil, "value", "default", "selected", "currentoption")
+	if start ~= nil then
+		self:Set(start, true)
+	end
+	Register(self, p)
+	return Mount(self, self._grid.Size.Y.Offset + (hasName and 22 or 6) + (search and 26 or 0))
+end
+
+function Gallery:_paintTiles()
+	local window = self.window
+	for _, tile in ipairs(self._tiles) do
+		local selected = IndexOf(self.value, tile.item.name) ~= nil
+		tile.selected = selected
+		window:_paint(tile.outer, { BackgroundColor3 = selected and "Accent" or (tile.hovered and "BorderLight" or "Outline") }, true)
+		window:_paint(tile.label, { TextColor3 = selected and "Text" or "TextDim" })
+	end
+end
+
+-- places the tiles that match the search in rows
+function Gallery:_layout()
+	local columns, gap, height = self.columns, self.gap, self.tileHeight
+	local shown = 0
+	for _, tile in ipairs(self._tiles) do
+		local match = self._filter == "" or string.find(string.lower(tile.item.name), self._filter, 1, true) ~= nil
+		tile.outer.Visible = match
+		if match then
+			local column = shown % columns
+			local row = math.floor(shown / columns)
+			tile.outer.Size = UDim2.new(1 / columns, -gap * (columns - 1) / columns, 0, height)
+			tile.outer.Position = UDim2.new(column / columns, gap * column / columns, 0, row * (height + gap))
+			shown = shown + 1
+		end
+	end
+	local rows = math.ceil(shown / columns)
+	self._grid.Size = UDim2.new(1, 0, 0, rows > 0 and (rows * height + (rows - 1) * gap) or 0)
+	self.shown = shown
+end
+
+function Gallery:Refresh(items, keepSelection)
+	local window = self.window
+	for _, tile in ipairs(self._tiles) do
+		tile.outer:Destroy()
+	end
+	self._tiles = {}
+	self.items = {}
+	for _, raw in ipairs(items or {}) do
+		local item = GalleryItem(raw)
+		table.insert(self.items, item)
+		local outer, inner = window:_box(self._grid, UDim2.fromOffset(0, self.tileHeight), nil, "Background")
+		outer.Name = item.name
+		local picture = Create("ImageLabel", {
+			Name = "Picture",
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -8, 1, -26),
+			Position = UDim2.fromOffset(4, 4),
+			ScaleType = Enum.ScaleType.Fit,
+			Parent = inner,
+		})
+		local state = window:_label({ Size = UDim2.new(1, 0, 1, -22), TextSize = 11, TextXAlignment = Enum.TextXAlignment.Center, Parent = inner }, "Placeholder")
+		local label = window:_label({
+			Text = item.name,
+			Size = UDim2.new(1, -8, 0, 16),
+			Position = UDim2.new(0, 4, 1, -20),
+			TextSize = 11,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = inner,
+		}, "TextDim")
+		if item.color then
+			window:_frame({ Name = "Rarity", Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 0, 1, -2), BackgroundColor3 = item.color, Parent = inner })
+		end
+		if item.image then
+			state.Text = window:_t("Loading...")
+			ApplyImage(picture, item.image, function(id)
+				state.Text = id and "" or "x"
+			end)
+		end
+		local tile = { item = item, outer = outer, label = label, picture = picture }
+		local hitbox = window:_hitbox(outer)
+		Hover(window, hitbox, function()
+			tile.hovered = true
+			if not tile.selected then
+				window:_paint(outer, { BackgroundColor3 = "BorderLight" })
+			end
+		end, function()
+			tile.hovered = false
+			if not tile.selected then
+				window:_paint(outer, { BackgroundColor3 = "Outline" })
+			end
+		end, self)
+		self:_connect(hitbox.Activated, function()
+			if not self._locked then
+				self:_pick(item.name)
+			end
+		end)
+		table.insert(self._tiles, tile)
+	end
+	if not keepSelection then
+		self.value = {}
+	else
+		local kept = {}
+		for _, name in ipairs(self.value) do
+			if self:GetItem(name) then
+				table.insert(kept, name)
+			end
+		end
+		self.value = kept
+	end
+	self:_layout()
+	self:_paintTiles()
+end
+
+function Gallery:_pick(name)
+	local list = CopyList(self.value)
+	local index = IndexOf(list, name)
+	if self.multi then
+		if index then
+			table.remove(list, index)
+		else
+			table.insert(list, name)
+		end
+	else
+		list = index and {} or { name }
+	end
+	self:Set(list)
+end
+
+function Gallery:GetItem(name)
+	for _, item in ipairs(self.items) do
+		if item.name == name then
+			return item.raw or item
+		end
+	end
+	return nil
+end
+
+function Gallery:Set(value, skipCallback)
+	local list = {}
+	if type(value) == "table" then
+		for _, name in ipairs(value) do
+			table.insert(list, tostring(name))
+		end
+	elseif value ~= nil then
+		list = { tostring(value) }
+	end
+	if not self.multi and #list > 1 then
+		list = { list[1] }
+	end
+	local before = table.concat(self.value, "\0")
+	self.value = list
+	self.CurrentOption = list
+	self:_paintTiles()
+	if not skipCallback then
+		if self.multi then
+			Call(self.callback, CopyList(list))
+		else
+			Call(self.callback, list[1], list[1] and self:GetItem(list[1]) or nil)
+		end
+	end
+	if table.concat(list, "\0") ~= before then
+		self:_changed()
+	end
+end
+
+function Gallery:_save()
+	if self.multi then
+		return CopyList(self.value)
+	end
+	return self.value[1]
+end
+
+function Gallery:_load(value)
+	self:Set(value)
+end
+
 -- section:CreateDiscord({ invite = "discord.gg/abc" }) - button with the discord logo
 function Elements.Discord(holder, p)
 	local window = holder.window
@@ -2526,6 +2956,7 @@ Holder.__index = Holder
 local RowForbidden = {
 	Input = true, Keybind = true, ColorPicker = true, Dropdown = true,
 	Text = true, Divider = true, Console = true, Progress = true, SubHeader = true,
+	Image = true, ImageGallery = true,
 }
 
 local function DefineCreators(target, resolve)
@@ -2558,6 +2989,9 @@ local function DefineCreators(target, resolve)
 	target.CreateDivider = creator("Divider")
 	target.CreateStatus = creator("Status")
 	target.CreateDiscord = creator("Discord")
+	target.CreateImage = creator("Image")
+	target.CreateImageGallery = creator("ImageGallery")
+	target.CreateImagePicker = target.CreateImageGallery
 	target.CreateParagraph = function(self, props)
 		local p = LowerKeys(props)
 		return target.CreateText(self, { name = Pick(p, nil, "title", "name"), text = Pick(p, nil, "content", "text") })
@@ -2974,6 +3408,9 @@ local BuiltinTranslations = {
 		["get key"] = "obtener clave",
 		["check key"] = "comprobar clave",
 		["link copied to clipboard"] = "enlace copiado al portapapeles",
+		["Loading..."] = "Cargando...",
+		["Ready"] = "Listo",
+		["Loading images {done}/{total}"] = "Cargando imágenes {done}/{total}",
 	},
 	pt = {
 		["Settings"] = "Configurações",
@@ -3040,6 +3477,9 @@ local BuiltinTranslations = {
 		["get key"] = "pegar key",
 		["check key"] = "verificar key",
 		["link copied to clipboard"] = "link copiado",
+		["Loading..."] = "Carregando...",
+		["Ready"] = "Pronto",
+		["Loading images {done}/{total}"] = "Carregando imagens {done}/{total}",
 	},
 	fr = {
 		["Settings"] = "Paramètres",
@@ -3106,6 +3546,9 @@ local BuiltinTranslations = {
 		["get key"] = "obtenir une clé",
 		["check key"] = "vérifier la clé",
 		["link copied to clipboard"] = "lien copié",
+		["Loading..."] = "Chargement...",
+		["Ready"] = "Prêt",
+		["Loading images {done}/{total}"] = "Chargement des images {done}/{total}",
 	},
 	de = {
 		["Settings"] = "Einstellungen",
@@ -3172,6 +3615,9 @@ local BuiltinTranslations = {
 		["get key"] = "Key holen",
 		["check key"] = "Key prüfen",
 		["link copied to clipboard"] = "Link kopiert",
+		["Loading..."] = "Lädt...",
+		["Ready"] = "Fertig",
+		["Loading images {done}/{total}"] = "Lade Bilder {done}/{total}",
 	},
 	ru = {
 		["Settings"] = "Настройки",
@@ -3238,6 +3684,9 @@ local BuiltinTranslations = {
 		["get key"] = "получить ключ",
 		["check key"] = "проверить ключ",
 		["link copied to clipboard"] = "ссылка скопирована",
+		["Loading..."] = "Загрузка...",
+		["Ready"] = "Готово",
+		["Loading images {done}/{total}"] = "Загрузка картинок {done}/{total}",
 	},
 	tr = {
 		["Settings"] = "Ayarlar",
@@ -3304,6 +3753,9 @@ local BuiltinTranslations = {
 		["get key"] = "key al",
 		["check key"] = "key kontrol et",
 		["link copied to clipboard"] = "link kopyalandı",
+		["Loading..."] = "Yükleniyor...",
+		["Ready"] = "Hazır",
+		["Loading images {done}/{total}"] = "Resimler yükleniyor {done}/{total}",
 	},
 	vi = {
 		["Settings"] = "Cài đặt",
@@ -3370,6 +3822,9 @@ local BuiltinTranslations = {
 		["get key"] = "lấy key",
 		["check key"] = "kiểm tra key",
 		["link copied to clipboard"] = "đã sao chép link",
+		["Loading..."] = "Đang tải...",
+		["Ready"] = "Xong",
+		["Loading images {done}/{total}"] = "Đang tải ảnh {done}/{total}",
 	},
 	id = {
 		["Settings"] = "Pengaturan",
@@ -3436,6 +3891,9 @@ local BuiltinTranslations = {
 		["get key"] = "ambil key",
 		["check key"] = "cek key",
 		["link copied to clipboard"] = "link disalin",
+		["Loading..."] = "Memuat...",
+		["Ready"] = "Siap",
+		["Loading images {done}/{total}"] = "Memuat gambar {done}/{total}",
 	},
 	pl = {
 		["Settings"] = "Ustawienia",
@@ -3502,8 +3960,12 @@ local BuiltinTranslations = {
 		["get key"] = "zdobądź klucz",
 		["check key"] = "sprawdź klucz",
 		["link copied to clipboard"] = "skopiowano link",
+		["Loading..."] = "Ładowanie...",
+		["Ready"] = "Gotowe",
+		["Loading images {done}/{total}"] = "Ładowanie obrazków {done}/{total}",
 	},
 }
+
 
 
 local Window = {}
@@ -4606,11 +5068,20 @@ end
 -- Visibility -------------------------------------------------------------------------
 
 function Window:Show()
-	if self.unloaded or self._keyLocked then
+	if self.unloaded or self._keyLocked or self._loadingScreen then
 		return
 	end
+	local wasHidden = not self._main.Visible
 	self.visible = true
+	self._animation = (self._animation or 0) + 1
 	self._main.Visible = true
+	if wasHidden and self._animate then
+		-- small pop in
+		self._uiScale.Scale = self._scale * 0.92
+		Tween(self._uiScale, { Scale = self._scale }, 0.22, Enum.EasingStyle.Quint)
+	else
+		self._uiScale.Scale = self._scale
+	end
 	self:_refreshPill()
 end
 
@@ -4620,7 +5091,19 @@ function Window:Hide()
 	end
 	self.visible = false
 	self:_closePopover()
-	self._main.Visible = false
+	self._animation = (self._animation or 0) + 1
+	local animation = self._animation
+	if self._animate and self._main.Visible then
+		local tween = Tween(self._uiScale, { Scale = self._scale * 0.92 }, 0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		tween.Completed:Connect(function()
+			if self._animation == animation and not self.visible and not self.unloaded then
+				self._main.Visible = false
+				self._uiScale.Scale = self._scale
+			end
+		end)
+	else
+		self._main.Visible = false
+	end
 	self:_refreshPill()
 end
 
@@ -4636,7 +5119,7 @@ function Window:ToggleMinimise()
 	self.minimised = not self.minimised
 	self:_closePopover()
 	local goal = self.minimised and UDim2.fromOffset(self._size.X, HEADER_HEIGHT + 2) or UDim2.fromOffset(self._size.X, self._size.Y)
-	Tween(self._main, { Size = goal }, 0.22)
+	Tween(self._main, { Size = goal }, 0.25, Enum.EasingStyle.Quint)
 	self._minimiseButton.Text = self.minimised and "+" or "-"
 end
 
@@ -5031,7 +5514,7 @@ function Window:_refreshPill()
 		self._fitPill()
 	end
 	if self._pill then
-		self._pill.Visible = self._showPill and not self._keyLocked and (self._mobile or not self.visible)
+		self._pill.Visible = self._showPill and not self._keyLocked and not self._loadingScreen and (self._mobile or not self.visible)
 		if self._pillAccent then
 			self._pillAccent.Visible = self.visible
 		end
@@ -5354,6 +5837,163 @@ function Window:ShowDiscordPrompt(props)
 	return prompt
 end
 
+-- Loading screen --------------------------------------------------------------------
+
+-- card with the hub name and a progress bar, shown before the menu opens.
+-- automatic (fills over `duration`, or while `images` download) or driven by you
+-- with SetLoading / FinishLoading
+function Window:_showLoading(spec)
+	local o = type(spec) == "table" and LowerKeys(spec) or {}
+	self._loadingScreen = true
+	self._afterLoading = self._afterLoading or {}
+	self._main.Visible = false
+	self:_refreshPill()
+	if self._infoBar then
+		self._infoBar.Visible = false
+	end
+
+	local layer = self:_frame({ Name = "Loading", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 40, Parent = self._gui })
+	local card, fill = self:_rim({ Size = UDim2.fromOffset(300, 0), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 14), Parent = layer }, "Panel")
+	if self._scale ~= 1 then
+		Create("UIScale", { Scale = self._scale, Parent = card })
+	end
+	List(fill, 0)
+	self:_frame({ Size = UDim2.new(1, 0, 0, 2), LayoutOrder = 0, Parent = fill }, { BackgroundColor3 = "Accent" })
+	local body = self:_frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO_Y, BackgroundTransparency = 1, LayoutOrder = 1, Parent = fill })
+	Padding(body, 14, 16, 14, 16)
+	List(body, 8)
+
+	local header = self:_frame({ Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = 1, Parent = body })
+	List(header, 8, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center })
+	local logo = IconImage(Pick(o, nil, "logo", "icon", "image"))
+	if logo then
+		Create("ImageLabel", { Image = logo, BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 20), LayoutOrder = 1, Parent = header })
+	end
+	self:_label({ Text = tostring(Pick(o, self.name, "title")), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AUTO_X, TextSize = 15, LayoutOrder = 2, Parent = header }, "Accent")
+	local subtitle = Pick(o, self.subtitle, "subtitle")
+	if subtitle then
+		self:_label({ Text = self:_t(subtitle), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AUTO_X, TextSize = 12, LayoutOrder = 3, Parent = header }, "TextDim")
+	end
+
+	local _, track = self:_box(body, UDim2.new(1, 0, 0, 6), nil, "Background")
+	track.Parent.LayoutOrder = 2
+	local bar = self:_frame({ Name = "Bar", Size = UDim2.fromScale(0, 1), Parent = track }, { BackgroundColor3 = "Accent" })
+
+	local footer = self:_frame({ Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, LayoutOrder = 3, Parent = body })
+	local status = self:_label({ Text = self:_t(Pick(o, "Loading...", "text", "status")), Size = UDim2.new(1, -40, 1, 0), TextSize = 11, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer }, "TextDim")
+	local percent = self:_label({ Text = "0%", Size = UDim2.new(0, 40, 1, 0), Position = UDim2.new(1, -40, 0, 0), TextSize = 11, TextXAlignment = Enum.TextXAlignment.Right, Parent = footer }, "Text")
+
+	Tween(card, { Position = UDim2.fromScale(0.5, 0.5) }, 0.35, Enum.EasingStyle.Quint)
+	self._loader = { layer = layer, card = card, bar = bar, status = status, percent = percent, progress = 0 }
+
+	local manual = Pick(o, false, "manual") == true
+	local duration = tonumber(Pick(o, 1.5, "duration", "time")) or 1.5
+	local images = Pick(o, nil, "images", "preload")
+	local timeout = tonumber(Pick(o, 30, "timeout")) or 30
+	task.spawn(function()
+		if type(images) == "table" and #images > 0 then
+			self:PreloadImages(images)
+		end
+		if manual then
+			-- you call FinishLoading. this is just so nobody gets stuck on it
+			local started = os.clock()
+			while self._loadingScreen and not self.unloaded and os.clock() - started < timeout do
+				task.wait(0.1)
+			end
+		else
+			local from = self._loader and self._loader.progress or 0
+			local steps = math.max(1, math.floor(duration / 0.05))
+			for i = 1, steps do
+				if not self._loadingScreen or self.unloaded then
+					return
+				end
+				self:SetLoading(nil, from + (1 - from) * (i / steps))
+				task.wait(duration / steps)
+			end
+		end
+		self:FinishLoading()
+	end)
+end
+
+-- text and/or progress (0 to 1). nil leaves that part alone
+function Window:SetLoading(text, progress)
+	local loader = self._loader
+	if not loader then
+		return
+	end
+	if text ~= nil then
+		loader.status.Text = self:_t(tostring(text))
+	end
+	if type(progress) == "number" then
+		progress = math.clamp(progress, 0, 1)
+		loader.progress = progress
+		Tween(loader.bar, { Size = UDim2.fromScale(progress, 1) }, 0.12)
+		loader.percent.Text = math.floor(progress * 100 + 0.5) .. "%"
+	end
+end
+
+-- fades the loading card out and opens the menu
+function Window:FinishLoading()
+	local loader = self._loader
+	if not loader or not self._loadingScreen then
+		return
+	end
+	self._loader = nil
+	loader.bar.Size = UDim2.fromScale(1, 1)
+	loader.percent.Text = "100%"
+	loader.status.Text = self:_t("Ready")
+	local fade = 0.25
+	for _, item in ipairs(loader.layer:GetDescendants()) do
+		if item:IsA("GuiObject") then
+			local goals = { BackgroundTransparency = 1 }
+			if item:IsA("TextLabel") or item:IsA("TextButton") or item:IsA("TextBox") then
+				goals.TextTransparency = 1
+			elseif item:IsA("ImageLabel") or item:IsA("ImageButton") then
+				goals.ImageTransparency = 1
+			end
+			Tween(item, goals, fade)
+		end
+	end
+	Tween(loader.card, { Position = UDim2.new(0.5, 0, 0.5, -10) }, fade, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	task.delay(fade, function()
+		loader.layer:Destroy()
+	end)
+	self._loadingScreen = false
+	self:Show()
+	if self._infoBar then
+		self:SetInfoBar(self.infoBarVisible)
+	end
+	local queue = self._afterLoading or {}
+	self._afterLoading = {}
+	for _, fn in ipairs(queue) do
+		task.spawn(fn)
+	end
+end
+
+function Window:IsLoading()
+	return self._loadingScreen == true
+end
+
+-- runs fn now, or once the loading screen is gone
+function Window:_whenLoaded(fn)
+	if self._loadingScreen then
+		table.insert(self._afterLoading, fn)
+	else
+		task.defer(fn)
+	end
+end
+
+-- downloads/caches a list of images up front (yields until done). with the loading
+-- screen up it shows the progress there. returns how many loaded and the total
+function Window:PreloadImages(list, onProgress)
+	return Onyx:PreloadImages(list, function(done, total, ...)
+		if self._loadingScreen then
+			self:SetLoading(self:_tf("Loading images {done}/{total}", { done = done, total = total }), done / total)
+		end
+		Call(onProgress, done, total, ...)
+	end)
+end
+
 -- Info bar --------------------------------------------------------------------------
 
 local InfoFields = { "fps", "ping", "executor", "time" }
@@ -5461,7 +6101,7 @@ function Window:SetInfoBar(visible)
 		self:_buildInfoBar(self._infoBarSpec)
 	end
 	if self._infoBar then
-		self._infoBar.Visible = visible and not self._keyLocked
+		self._infoBar.Visible = visible and not self._keyLocked and not self._loadingScreen
 	end
 	self.infoBarVisible = visible
 	if self._infoToggle and self._infoToggle.value ~= visible then
@@ -5863,6 +6503,8 @@ function Onyx:CreateWindow(props)
 	window._userScale = tonumber(Pick(p, nil, "scale"))
 	window._scale = 1
 	window._showStatusTag = Pick(p, true, "statustag") ~= false
+	window._animate = Pick(p, true, "animations", "animation") ~= false
+	window._afterLoading = {}
 	local discord = Pick(p, nil, "discord", "discordinvite")
 	if type(discord) == "table" then
 		discord = Pick(LowerKeys(discord), nil, "invite", "link", "url", "code")
@@ -6202,18 +6844,32 @@ function Onyx:CreateWindow(props)
 	})
 	window._pillAccent = pillAccent
 	window._fitPill = fitPill
-	if window._mobile then
-		Padding(pillRow, 8, 14, 8, 14)
+	local compact = window._mobile and string.lower(tostring(Pick(p, "compact", "launcherstyle", "mobilebutton"))) ~= "text"
+	if compact then
+		-- phones: a small square you can drag anywhere, tap to open/close
+		local square = window:_frame({ Name = "Button", Size = UDim2.fromOffset(40, 40), BackgroundTransparency = 1, Parent = pillRow })
+		if showIcon then
+			local icon = Create("ImageLabel", { Image = showIcon, BackgroundTransparency = 1, Size = UDim2.fromOffset(22, 22), Position = UDim2.fromOffset(9, 9), Parent = square })
+			window:_paint(icon, { ImageColor3 = "Accent" })
+		else
+			local letter = string.upper(string.sub(tostring(window._showName), 1, 1))
+			window:_label({ Text = letter ~= "" and letter or "+", Size = UDim2.fromScale(1, 1), TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center, Parent = square }, "Accent")
+		end
+		window._pillCompact = true
 	else
-		Padding(pillRow, 5, 10, 5, 10)
-	end
-	List(pillRow, 6, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center })
-	if showIcon then
-		local icon = Create("ImageLabel", { Image = showIcon, BackgroundTransparency = 1, Size = UDim2.fromOffset(16, 16), Parent = pillRow })
-		window:_paint(icon, { ImageColor3 = "Accent" })
-	end
-	if not (iconOnly and showIcon) then
-		window._pillLabel = window:_label({ Size = UDim2.new(), AutomaticSize = AUTO_XY, TextSize = window._mobile and 14 or 12, LayoutOrder = 2, Parent = pillRow }, "Text")
+		if window._mobile then
+			Padding(pillRow, 8, 14, 8, 14)
+		else
+			Padding(pillRow, 5, 10, 5, 10)
+		end
+		List(pillRow, 6, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center })
+		if showIcon then
+			local icon = Create("ImageLabel", { Image = showIcon, BackgroundTransparency = 1, Size = UDim2.fromOffset(16, 16), Parent = pillRow })
+			window:_paint(icon, { ImageColor3 = "Accent" })
+		end
+		if not (iconOnly and showIcon) then
+			window._pillLabel = window:_label({ Size = UDim2.new(), AutomaticSize = AUTO_XY, TextSize = window._mobile and 14 or 12, LayoutOrder = 2, Parent = pillRow }, "Text")
+		end
 	end
 	window._pill = pill
 
@@ -6238,9 +6894,18 @@ function Onyx:CreateWindow(props)
 		end
 	end, function()
 		local tapped = pressStart ~= nil and not pressMoved
+		local moved = pressStart ~= nil and pressMoved
 		pressStart = nil
 		if tapped then
 			window:ToggleHide()
+		elseif moved and window._pillCompact then
+			-- snap to the nearest side so it stays out of the way
+			local screen, size = gui.AbsoluteSize, pill.AbsoluteSize
+			local position = LocalPosition(pill, gui)
+			if screen.X > 0 then
+				local x = (position.X + size.X / 2 < screen.X / 2) and 8 or (screen.X - size.X - 8)
+				Tween(pill, { Position = UDim2.fromOffset(x, position.Y) }, 0.25, Enum.EasingStyle.Quint)
+			end
 		end
 	end)
 	window:_refreshPill()
@@ -6375,6 +7040,7 @@ function Onyx:CreateWindow(props)
 		window:_watchStatus(statusUrl, tonumber(Pick(p, nil, "statusrefresh")))
 	end
 
+	local loadingSpec = Pick(p, nil, "loadingscreen", "loading")
 	if keyOptions then
 		window._keyLocked = true
 		window.visible = false
@@ -6387,7 +7053,13 @@ function Onyx:CreateWindow(props)
 			return nil
 		end
 		window._keyLocked = false
-		window:Show()
+		if not loadingSpec then
+			window:Show()
+		end
+	end
+
+	if loadingSpec then
+		window:_showLoading(loadingSpec)
 	end
 
 	if window._infoBarSpec or window.infoBarVisible then
@@ -6398,7 +7070,7 @@ function Onyx:CreateWindow(props)
 	local notice = Pick(p, nil, "notice")
 	local discordPrompt = Pick(p, nil, "discordprompt")
 	if changelog or notice or discordPrompt then
-		task.defer(function()
+		window:_whenLoaded(function()
 			if window.unloaded then
 				return
 			end
@@ -6470,6 +7142,52 @@ end
 Onyx.Themes = ThemeNames
 
 -- so status = Onyx.Status.Patched autocompletes and can't be misspelled
+-- images outside the window: same downloading and caching the elements use
+
+-- yields until all of them are ready. onProgress(done, total, source, contentId)
+function Onyx:PreloadImages(list, onProgress)
+	list = type(list) == "table" and list or { list }
+	local total, done, loaded = #list, 0, 0
+	for _, src in ipairs(list) do
+		ResolveImage(src, function(id)
+			done = done + 1
+			if id then
+				loaded = loaded + 1
+			end
+			Call(onProgress, done, total, src, id)
+		end)
+	end
+	while done < total do
+		task.wait(0.03)
+	end
+	return loaded, total
+end
+
+-- content id for any image source (yields while it downloads), nil if it can't load
+function Onyx:GetImage(src)
+	local result, finished = nil, false
+	ResolveImage(src, function(id)
+		result, finished = id, true
+	end)
+	while not finished do
+		task.wait(0.03)
+	end
+	return result
+end
+
+-- put any image source on your own ImageLabel / ImageButton
+function Onyx:SetImage(target, src, onDone)
+	ApplyImage(target, src, onDone)
+end
+
+-- forget downloaded images (deleteFiles also removes Onyx/Images from disk)
+function Onyx:ClearImageCache(deleteFiles)
+	table.clear(ImageCache)
+	if deleteFiles and type(delfolder) == "function" then
+		pcall(delfolder, "Onyx/Images")
+	end
+end
+
 Onyx.Status = { Working = "working", Updating = "updating", Patched = "patched" }
 
 return Onyx

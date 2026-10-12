@@ -96,6 +96,46 @@ elseif scene == "language" then
 	M.flush()
 	w:Navigate(w._settingsTab)
 	gui = w._gui
+elseif scene == "skins" or scene == "loading" then
+	-- __PREVIEW_DIR is a folder of pictures standing in for downloaded skins
+	local dir = __PREVIEW_DIR or "."
+	local skins = {
+		{ "Dragon Lore", "dragon", Color3.fromRGB(235, 75, 75) },
+		{ "Howl", "howl", Color3.fromRGB(235, 75, 75) },
+		{ "Asiimov", "asiimov", Color3.fromRGB(211, 44, 230) },
+		{ "Fade", "fade", Color3.fromRGB(211, 44, 230) },
+		{ "Doppler", "doppler", Color3.fromRGB(136, 71, 255) },
+		{ "Tiger Tooth", "tiger", Color3.fromRGB(75, 105, 255) },
+	}
+	local items = {}
+	for _, s in ipairs(skins) do
+		local url = "https://cdn.example.com/skins/" .. s[2] .. ".png"
+		M.web[url] = "preview:file://" .. dir .. "/" .. s[2] .. ".png"
+		table.insert(items, { name = s[1], image = url, color = s[3] })
+	end
+	game.HttpGet = function(_, url) return M.web[url] or error("404") end
+	if scene == "loading" then
+		local w = Onyx:CreateWindow(options({ name = "Noic Hub", subtitle = "Bloxstrike", infoBar = false, loadingScreen = { manual = true } }))
+		M.flush()
+		w:SetLoading("Loading images 3/8", 0.42)
+		gui = w._gui
+	else
+		local w = Onyx:CreateWindow(options({ name = "Noic Hub", subtitle = "skins", infoBar = false }))
+		local tab = w:CreateTab({ name = "Skins" })
+		w:CreateTab({ name = "Visuals" })
+		w:CreateTab({ name = "Misc" })
+		local knives = tab:CreateSection({ name = "Knife", side = "left" })
+		knives:CreateImageGallery({ items = items, value = "Fade", columns = 2, search = true })
+		local preview = tab:CreateSection({ name = "Preview", side = "right" })
+		preview:CreateImage({ image = items[4].image, height = 110 })
+		preview:CreateDropdown({ name = "Wear", options = { "Factory New", "Minimal Wear", "Field-Tested" }, value = "Factory New" })
+		preview:CreateToggle({ name = "StatTrak", value = true })
+		preview:CreateButton({ name = "Apply" })
+		M.flush()
+		M.advance(0.3)
+		w:Navigate("Skins")
+		gui = w._gui
+	end
 elseif scene == "crowded" then
 	-- lots of top tabs in a narrow window
 	local w = Onyx:CreateWindow(options({ subtitle = "lots of tabs", size = UDim2.fromOffset(628, 460), discord = "discord.gg/example", infoBar = true }))
@@ -160,6 +200,13 @@ local function visit(inst, clip)
 		local okImg, image = pcall(function() return inst.Image end)
 		if okImg and image and image ~= "" then
 			node.img = image:match("^rbxthumb") and "avatar" or "icon"
+			-- downloaded images: scenes put "preview:<file>" in the fake download
+			local custom = image:match("^rbxasset://custom/(.+)$")
+			local body = custom and M.files[custom]
+			if type(body) == "string" and body:match("^preview:") then
+				node.src = body:sub(9)
+				node.fit = inst.ScaleType and inst.ScaleType.Name or "Fit"
+			end
 		end
 		table.insert(nodes, node)
 		if inst.ClipsDescendants then

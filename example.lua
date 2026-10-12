@@ -11,6 +11,7 @@ local window = Onyx:CreateWindow({
 	discord = "https://discord.gg/yourcode", -- discord button in the title bar + settings
 	-- discordPrompt = { joinDelay = 2, continueDelay = 4 }, -- "join our discord" popup on load
 	infoBar = true, -- fps | ping | executor | time bar, draggable
+	loadingScreen = true, -- loading card before the menu opens (or { manual = true } and call window:FinishLoading())
 	-- language = "es", -- start language, players can change it in Settings
 	translations = { es = { Aimbot = "Puntería", Visuals = "Visuales" } }, -- your own text
 
@@ -136,6 +137,21 @@ tools:CreateButton({
 		log:Append("kill #" .. kills.value)
 	end,
 })
+-- pictures: asset ids, web links (downloaded + cached) or files all work
+local skins = misc:CreateSection("Skins")
+skins:CreateImageGallery({
+	name = "Knife",
+	flag = "KnifeSkin",
+	items = {
+		{ name = "Default" },
+		{ name = "Fade", color = Color3.fromRGB(211, 44, 230) }, -- add image = "https://..." for a picture
+		{ name = "Howl", color = Color3.fromRGB(235, 75, 75) },
+	},
+	callback = function(name)
+		print("knife skin:", name)
+	end,
+})
+
 tools:CreateStatus()
 tools:CreateDiscord()
 tools:CreateDivider({ text = "danger" })

@@ -1,6 +1,6 @@
 // Renders a scene from render.lua to static HTML (used for the screenshots in docs/images).
 // usage: node render.js <scene> <out.html> [viewW viewH cssScale]
-// scenes: main, sidebar, settings, keysystem, changelog, mobile, crowded, discord, language (mobile uses 993 459 0.85)
+// scenes: main, sidebar, settings, keysystem, changelog, mobile, crowded, discord, language, skins, loading (mobile uses 993 459 0.85)
 // then screenshot the page at its size, e.g. with headless Chrome/Edge:
 //   msedge --headless --window-size=1280,720 --virtual-time-budget=6000 --screenshot=main.png http://localhost/main.html
 // (serve it over http so the Inconsolata web font loads)
@@ -21,6 +21,7 @@ setStr("__RENDER_SRC", fs.readFileSync(path.join(__dirname, "render.lua"), "utf8
 setStr("__SCENE", scene);
 setNum("__VW", viewW);
 setNum("__VH", viewH);
+setStr("__PREVIEW_DIR", process.env.PREVIEW_DIR || path.join(__dirname, "preview"));
 
 const driver = `
 local ok, err = xpcall(function()
@@ -65,6 +66,7 @@ for (const n of nodes) {
 		inner = `<span style="text-align:${n.xa.toLowerCase()}">${esc(n.text)}</span>`;
 	}
 	if (n.img === "avatar") style += "background:linear-gradient(160deg,#c9a27a,#8a6a4c);";
+	if (n.src) inner += `<img src="${n.src}" style="width:100%;height:100%;object-fit:${n.fit === "Crop" ? "cover" : n.fit === "Stretch" ? "fill" : "contain"}">`;
 	html += `<div style="${style}">${inner}</div>\n`;
 }
 

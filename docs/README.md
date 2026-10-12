@@ -10,6 +10,7 @@
 8. [Saving and flags](saving.md)
 9. [Themes](themes.md)
 10. [Mobile](mobile.md)
+11. [Images and skin pickers](images.md)
 
 Loadstring:
 

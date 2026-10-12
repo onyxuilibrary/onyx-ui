@@ -610,6 +610,8 @@ tag:Remove()
 eq(M.byText(w._tagList, "live"), nil, "tag removed")
 
 w:Hide()
+check(w._main.Visible and not w.visible, "hide animates out first")
+M.flush()
 check(not w._main.Visible and w._pill.Visible, "hidden shows pill")
 M.press("RightShift")
 check(w._main.Visible, "menu key shows")
@@ -788,7 +790,9 @@ M.flush()
 
 check(mw._mobile, "touch-only device detected as mobile")
 check(mw._pill.Visible, "launcher always visible on mobile")
-eq(mw._pillLabel.Text, "onyx", "mobile launcher has no key hint")
+check(mw._pillCompact, "mobile launcher is the compact square")
+check(M.byText(mw._pill, "O") ~= nil, "square shows the first letter")
+check(mw._pill.AbsoluteSize.X < 60 and mw._pill.AbsoluteSize.Y < 60, "square is small (" .. tostring(mw._pill.AbsoluteSize) .. ")")
 check(mw._scale < 1, "window scaled down to fit the phone (" .. mw._scale .. ")")
 eq(mw._uiScale.Scale, mw._scale, "UIScale applied")
 check(math.abs(mw._scale - (390 - 16) / 440) < 1e-6, "scale fits the screen height")
@@ -807,7 +811,16 @@ local c0 = M.center(launcher)
 M.touchDrag(launcher, c0, Vector2.new(c0.X + 120, c0.Y + 80))
 check(mw.visible, "dragging the launcher does not toggle")
 local after = mw._pill.AbsolutePosition
-check(math.abs(after.X - before.X - 120) < 1 and math.abs(after.Y - before.Y - 80) < 1, "launcher follows the finger")
+check(math.abs(after.Y - before.Y - 80) < 1, "launcher follows the finger")
+do
+local localX = after.X - mw._gui.AbsolutePosition.X
+local screenW = mw._gui.AbsoluteSize.X
+check(math.abs(localX - 8) < 1 or math.abs(localX - (screenW - mw._pill.AbsoluteSize.X - 8)) < 1, "launcher snaps to the nearest edge (" .. localX .. ")")
+local far = M.center(launcher)
+M.touchDrag(launcher, far, Vector2.new(screenW - 30, far.Y))
+local right = mw._pill.AbsolutePosition.X - mw._gui.AbsolutePosition.X
+check(math.abs(right - (screenW - mw._pill.AbsoluteSize.X - 8)) < 1, "dragged to the right half snaps right")
+end
 M.touchDrag(launcher, M.center(launcher), Vector2.new(5000, 5000))
 local edge = mw._pill.AbsolutePosition
 check(edge.X + mw._pill.AbsoluteSize.X <= 844 + 0.5 and edge.Y + mw._pill.AbsoluteSize.Y <= 390 + 0.5, "launcher clamped on screen")
@@ -1375,6 +1388,191 @@ eq(bw._settingsTab._buttonLabel.Text, "Configurações", "pt-BR falls back to Po
 eq(bw._languageDropdown.value[1], "Português", "dropdown matches the fallback")
 bw:Unload()
 noErrors("language")
+end)()
+
+--------------------------------------------------------------------------------
+section("images, gallery, loading screen")
+--------------------------------------------------------------------------------
+
+;(function()
+game.HttpGet = function(_, url)
+	local body = M.web[url]
+	if body == nil then error("404 " .. tostring(url)) end
+	M.downloads = M.downloads + 1
+	return body
+end
+M.web["https://cdn.example.com/skins/dragon.png"] = "\137PNG dragon"
+M.web["https://cdn.example.com/skins/howl.jpg?v=2"] = "\255\216 howl"
+M.web["https://cdn.example.com/skins/asiimov.png"] = "\137PNG asiimov"
+M.downloads = 0
+
+local iw = Onyx:CreateWindow({ name = "Skins" })
+local it = iw:CreateTab({ name = "Skins" })
+local isec = it:CreateSection("Preview")
+
+-- single image from a web link
+local img = isec:CreateImage({ name = "Preview", image = "https://cdn.example.com/skins/dragon.png", height = 100 })
+M.flush()
+check(string.find(img._picture.Image, "^rbxasset://custom/Onyx/Images/") ~= nil, "web image downloaded and shown (" .. img._picture.Image .. ")")
+check(M.files[string.sub(img._picture.Image, #"rbxasset://custom/" + 1)] == "\137PNG dragon", "image saved to the workspace")
+eq(img._state.Text, "", "loading text cleared")
+eq(M.downloads, 1, "one download")
+-- same link again comes from the cache
+local img2 = isec:CreateImage({ image = "https://cdn.example.com/skins/dragon.png" })
+M.flush()
+eq(img2._picture.Image, img._picture.Image, "cached image reused")
+eq(M.downloads, 1, "no second download")
+-- asset ids pass straight through
+img2:Set(123456)
+eq(img2._picture.Image, "rbxassetid://123456", "asset id shown as is")
+-- a broken link doesn't break anything
+img2:Set("https://cdn.example.com/missing.png")
+M.flush()
+eq(img2._picture.Image, "", "broken link leaves it empty")
+eq(img2._state.Text, "x", "broken link marked")
+check(warned("couldn't load image"), "broken link warns")
+-- a file the script wrote itself
+M.files["MyHub/skins/knife.png"] = "\137PNG knife"
+img2:Set("MyHub/skins/knife.png")
+eq(img2._picture.Image, "rbxasset://custom/MyHub/skins/knife.png", "local file shown")
+-- icons anywhere take links too
+iw:Notify({ title = "skin", icon = "https://cdn.example.com/skins/asiimov.png" })
+M.flush()
+check(M.find(iw._notifyList, function(d) return d.ClassName == "ImageLabel" and string.find(d.Image, "Onyx/Images/", 1, true) ~= nil end) ~= nil, "notification icon from a link")
+
+-- gallery
+local picked, pickedItem
+local gal = isec:CreateImageGallery({
+	name = "Knife skin",
+	flag = "KnifeSkin",
+	columns = 3,
+	items = {
+		{ name = "Dragon Lore", image = "https://cdn.example.com/skins/dragon.png", color = Color3.fromRGB(235, 75, 75) },
+		{ name = "Howl", image = "https://cdn.example.com/skins/howl.jpg?v=2" },
+		{ name = "Asiimov", image = "https://cdn.example.com/skins/asiimov.png" },
+		"Default",
+	},
+	value = "Howl",
+	callback = function(name, item)
+		picked, pickedItem = name, item
+	end,
+})
+M.flush()
+eq(#gal._tiles, 4, "4 tiles")
+eq(gal.value[1], "Howl", "start value")
+eq(picked, nil, "start value doesn't fire the callback")
+local howl = gal._tiles[2]
+check(howl.selected, "selected tile marked")
+eq(howl.outer.BackgroundColor3, iw.Theme.Accent, "selected tile outlined in the accent")
+check(string.find(howl.picture.Image, "%.jpg$") ~= nil, "jpg keeps its extension")
+eq(gal._grid.Size.Y.Offset, 76 * 2 + 6, "two rows of three")
+check(gal._tiles[4].outer.Position.Y.Offset > 0, "4th tile wraps to the second row")
+M.click(hitbox(gal._tiles[1].outer))
+eq(picked, "Dragon Lore", "tap picks a tile")
+check(type(pickedItem) == "table" and pickedItem.color ~= nil, "callback gets the item table")
+check(not gal._tiles[2].selected, "single select moves the selection")
+check(M.find(gal._tiles[1].outer, function(d) return d.Name == "Rarity" end) ~= nil, "rarity strip")
+M.click(hitbox(gal._tiles[1].outer))
+eq(gal.value[1], nil, "tapping the selected tile clears it")
+gal:Set("Asiimov")
+iw:Save("skins")
+gal:Set("Default")
+iw:Load("skins")
+M.flush()
+eq(gal.value[1], "Asiimov", "gallery saved with configs")
+gal:Refresh({ "One", "Two" })
+eq(#gal._tiles, 2, "refresh replaces the tiles")
+eq(gal._grid.Size.Y.Offset, 76, "one row after refresh")
+
+local many = {}
+for i = 1, 20 do
+	table.insert(many, { name = "Skin " .. i })
+end
+local multi = isec:CreateImageGallery({ items = many, multi = true })
+M.flush()
+check(multi._search ~= nil, "big galleries get a search box")
+multi._search.Text = "skin 1"
+eq(multi.shown, 11, "search filters tiles (skin 1, 10-19)")
+multi._search.Text = ""
+eq(multi.shown, 20, "clearing search shows all")
+M.click(hitbox(multi._tiles[1].outer))
+M.click(hitbox(multi._tiles[2].outer))
+eq(#multi.value, 2, "multi select keeps both")
+iw:Unload()
+
+-- preloading
+M.downloads = 0
+M.web["https://cdn.example.com/a.png"] = "a"
+M.web["https://cdn.example.com/b.png"] = "b"
+local progress = {}
+local loaded, total
+task.spawn(function()
+	loaded, total = Onyx:PreloadImages({ "https://cdn.example.com/a.png", "https://cdn.example.com/b.png", "https://cdn.example.com/nope.png" }, function(done, all)
+		table.insert(progress, done .. "/" .. all)
+	end)
+end)
+M.advance(0.2)
+eq(loaded, 2, "preload counts what loaded")
+eq(total, 3, "preload total")
+eq(#progress, 3, "progress for each image")
+local gotId
+task.spawn(function()
+	gotId = Onyx:GetImage("https://cdn.example.com/a.png")
+end)
+M.advance(0.1)
+check(gotId ~= nil and string.find(gotId, "rbxasset://custom/") == 1, "GetImage returns a content id")
+eq(M.downloads, 2, "already downloaded images aren't fetched again")
+
+-- loading screen (automatic)
+local lw = Onyx:CreateWindow({ name = "Hub", loadingScreen = { duration = 1 }, discordPrompt = true, discord = "abc" })
+M.flush()
+check(lw:IsLoading(), "loading screen up")
+check(not lw._main.Visible, "menu waits for the loading screen")
+check(not lw._pill.Visible, "launcher waits too")
+eq(#lw._popups, 0, "popups wait until loading is done")
+local loadLayer = lw._gui:FindFirstChild("Loading")
+check(loadLayer ~= nil, "loading card shown")
+M.advance(0.5)
+local midBar = loadLayer and M.find(loadLayer, function(d) return d.Name == "Bar" end)
+check(midBar and midBar.Size.X.Scale > 0.2 and midBar.Size.X.Scale < 0.9, "bar fills over time (" .. (midBar and midBar.Size.X.Scale or -1) .. ")")
+M.advance(1)
+check(not lw:IsLoading(), "loading finishes on its own")
+check(lw._main.Visible and lw.visible, "menu opens after loading")
+eq(lw._uiScale.Scale, lw._scale, "pop-in ends at the normal scale")
+eq(#lw._popups, 1, "queued popup shows after loading")
+M.advance(0.5)
+eq(lw._gui:FindFirstChild("Loading"), nil, "loading card removed")
+lw:Unload()
+
+-- loading screen (manual)
+local mw2 = Onyx:CreateWindow({ name = "Manual", loadingScreen = { manual = true } })
+mw2:SetLoading("fetching skins", 0.4)
+M.flush()
+local status = M.byText(mw2._gui, "fetching skins")
+check(status ~= nil, "SetLoading text")
+check(M.byText(mw2._gui, "40%") ~= nil, "SetLoading percent")
+M.advance(2)
+check(mw2:IsLoading(), "manual mode waits for you")
+mw2:FinishLoading()
+M.flush()
+check(not mw2:IsLoading() and mw2._main.Visible, "FinishLoading opens the menu")
+mw2:Unload()
+
+-- loading screen + image preload, russian text
+M.web["https://cdn.example.com/c.png"] = "c"
+local rw = Onyx:CreateWindow({ name = "RU", language = "ru", loadingScreen = { images = { "https://cdn.example.com/c.png" }, duration = 0.2 } })
+M.flush()
+check(M.byText(rw._gui, "Загрузка картинок 1/1") ~= nil or not rw:IsLoading(), "image progress shown in russian")
+M.advance(1)
+check(not rw:IsLoading(), "done after images and duration")
+rw:Unload()
+
+-- animations can be turned off
+local aw = Onyx:CreateWindow({ name = "NoAnim", animations = false })
+aw:Hide()
+check(not aw._main.Visible, "no animation: hides at once")
+aw:Unload()
+noErrors("images")
 end)()
 
 --------------------------------------------------------------------------------
