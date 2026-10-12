@@ -73,3 +73,13 @@ Onyx:LoadConfiguration()
 `KeySystem = true` with a `KeySettings` table works too, see [key system](key-system.md).
 
 Next: [window options](window.md).
+
+## Want to see everything at once?
+
+Run the showcase, it uses every feature in one hub:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/onyxuilibrary/onyx-ui/main/examples/showcase.lua"))()
+```
+
+The code is in [examples/showcase.lua](../examples/showcase.lua), with comments on each part.

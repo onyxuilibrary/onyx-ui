@@ -3,7 +3,7 @@
   "private": true,
   "description": "Runs Onyx UI against a strict mock of the Roblox runtime",
   "scripts": {
-    "test": "node run.js"
+    "test": "node run.js && node examples.js"
   },
   "devDependencies": {
     "fengari": "0.1.4",

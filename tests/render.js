@@ -21,7 +21,7 @@ setStr("__RENDER_SRC", fs.readFileSync(path.join(__dirname, "render.lua"), "utf8
 setStr("__SCENE", scene);
 setNum("__VW", viewW);
 setNum("__VH", viewH);
-setStr("__PREVIEW_DIR", process.env.PREVIEW_DIR || path.join(__dirname, "preview"));
+setStr("__PREVIEW_DIR", process.env.PREVIEW_DIR || path.join(__dirname, "..", "examples", "images"));
 
 const driver = `
 local ok, err = xpcall(function()

@@ -45,6 +45,14 @@ RightShift opens and closes the menu on PC. On mobile there's a small button on 
 
 There's a bigger example covering everything in [example.lua](example.lua).
 
+### Showcase
+
+[examples/showcase.lua](examples/showcase.lua) shows off all the newer stuff in one hub: the loading screen with "Authenticating..." / "Loading features...", the skin gallery with downloaded pictures, the ESP preview following its toggles and colour picker, links, the status badge, the discord button and prompt, the info bar, English and Russian, custom colours, switch toggles and the interface settings. The buttons only print and show things off, nothing touches the game. Run it straight from GitHub:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/onyxuilibrary/onyx-ui/main/examples/showcase.lua"))()
+```
+
 ## Script status (working / updating / patched)
 
 Lets your users see if the script works right now. It shows as a coloured tag next to the title and in the Settings tab.
@@ -152,7 +160,7 @@ These are rendered from the library's real layout using the test runtime in `tes
 
 ## Tests
 
-`tests/` has a mock of the Roblox engine. It's strict, so a bad property name, wrong value type or invalid enum errors the same way it would in game. The suite clicks, drags, types and taps through every element, about 380 checks.
+`tests/` has a mock of the Roblox engine. It's strict, so a bad property name, wrong value type or invalid enum errors the same way it would in game. The suite clicks, drags, types and taps through every element (640+ checks), then runs `example.lua` and `examples/showcase.lua` start to finish.
 
 ```
 cd tests
