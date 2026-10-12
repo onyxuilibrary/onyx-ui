@@ -71,6 +71,25 @@ When the game breaks your script, edit the file to say `patched`. You can add a 
 
 Full guide with every option and fixes for common problems: [docs/status.md](docs/status.md)
 
+## Custom colours
+
+Players choose colours themselves with colour pickers:
+
+- **Accent colour** in the Settings tab: players pick the menu's own colour (toggles, sliders, tabs, title). It's saved with their config. Picking a theme moves it to that theme's colour.
+- **Your colour pickers**: add one for anything in your script, like ESP or chams. Click the swatch for a colour square, hue bar, see-through bar and a hex box.
+
+```lua
+section:CreateColorPicker({
+	name = "ESP colour",
+	flag = "EspColour",                    -- saved with configs
+	color = Color3.fromRGB(255, 70, 70),   -- starting colour
+	callback = function(color) end,
+})
+window:SetAccent(Color3.fromRGB(255, 120, 40))   -- set the menu colour from your script
+```
+
+Everything about colours: [docs/colors.md](docs/colors.md)
+
 ## What's in it
 
 - toggles, buttons, sliders, dropdowns (multi select + search), inputs, keybinds (with hold mode), colour pickers, stats, progress bars, consoles, text and dividers
@@ -79,13 +98,16 @@ Full guide with every option and fixes for common problems: [docs/status.md](doc
 - config saving with autosave/autoload and named configs
 - 6 themes plus custom ones, all switchable live
 - key system
-- script status (working / updating / patched) shown in the header and settings. Point it at a text file and you can flip it to patched without updating your script, see [status](docs/status.md)
+- script status (working / updating / patched) as a badge with a pulsing dot in the header and settings. Point it at a text file and you can flip it to patched without updating your script, see [status](docs/status.md)
 - notice and changelog popups when the script runs
 - info bar with fps, ping, executor and the time
 - discord button with the discord logo (copies the invite and opens it in discord)
 - "join our discord" prompt with countdown buttons
 - language picker in settings, 10 languages built in, add your own
-- loading screen with a progress bar
+- loading screen ("Authenticating...", "Loading features...") and a smooth entrance animation after it
+- custom colours: colour pickers for your features, and players pick the menu's accent colour in Settings, see [colours](docs/colors.md)
+- ESP preview panel with a dummy player that follows your ESP toggles and colours, see [ESP preview](docs/esp-preview.md)
+- links (accent, underlined, click to copy)
 - images and image galleries (skin pickers), with web links downloaded and cached for you
 - open/close animations, and a small draggable button to open the menu on mobile (Delta etc.)
 - notifications, toasts and popups
@@ -102,8 +124,8 @@ Full guide with every option and fixes for common problems: [docs/status.md](doc
 | key system | changelog on execute |
 | ![discord prompt](docs/images/discord.png) | ![skins](docs/images/skins.png) |
 | discord prompt with countdown buttons | image gallery for skins (placeholder pictures) |
-| ![loading](docs/images/loading.png) | |
-| loading screen | |
+| ![loading](docs/images/loading.png) | ![esp preview](docs/images/esp.png) |
+| loading screen | ESP preview, links and the status badge |
 
 ![mobile](docs/images/mobile.png)
 

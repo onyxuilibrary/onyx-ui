@@ -152,6 +152,14 @@ skins:CreateImageGallery({
 	end,
 })
 
+-- live preview of the ESP settings, opened by a button
+local espSection = visuals:CreateSection("ESP preview")
+local espPreview = window:CreateESPPreview({ bind = { box = "PreviewBoxes", boxColor = "BoxColour" } })
+espSection:CreateToggle({ name = "Boxes", flag = "PreviewBoxes", value = true })
+espSection:CreateColorPicker({ name = "Box colour", flag = "BoxColour", color = Color3.fromRGB(255, 70, 70) })
+espSection:CreateButton({ name = "ESP preview", callback = function() espPreview:Toggle() end })
+
+tools:CreateLink({ name = "Onyx on GitHub", url = "https://github.com/onyxuilibrary/onyx-ui" })
 tools:CreateStatus()
 tools:CreateDiscord()
 tools:CreateDivider({ text = "danger" })

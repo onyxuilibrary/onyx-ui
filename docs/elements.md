@@ -154,7 +154,7 @@ box:Set(Color3.new(0, 1, 0))
 box:SetAlpha(0.5)
 ```
 
-Click the swatch to open it: saturation square, hue bar, alpha bar and a hex box.
+Click the swatch to open it: saturation square, hue bar, alpha bar and a hex box. More on picking colours (and the Accent colour picker players get in Settings) in [colours](colors.md).
 
 ## Stat
 
@@ -238,6 +238,24 @@ section:CreateImage({ image = "https://raw.githubusercontent.com/you/repo/main/p
 ```
 
 Takes asset ids, web links (downloaded and cached for you) or files. See [images](images.md).
+
+## Link
+
+A clickable link: accent coloured and underlined, with the site name on the right.
+
+```lua
+section:CreateLink({ name = "Our website", url = "https://example.com" })
+section:CreateLink({ name = "Discord server", url = "https://discord.gg/yourcode" })
+section:CreateLink({ url = "https://github.com/you/hub" })   -- no name: shows the link itself
+```
+
+Roblox can't open a web browser, so clicking copies the link and a small message says "Link copied" (people paste it in their browser). Add `callback = function(url) end` to run something on click. `link:Set(newUrl, newName)` changes it. `CreateHyperlink` is the same thing.
+
+For Discord invites there's also [`CreateDiscord`](#discord), which can open the invite straight in the Discord app.
+
+## ESP preview
+
+Not an element in a section but a panel next to the window, see [ESP preview](esp-preview.md).
 
 ## Image gallery
 

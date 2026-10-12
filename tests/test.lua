@@ -908,7 +908,13 @@ M.flush()
 local row = sw._statusRow
 eq(row._value.Text, "WORKING", "status text in settings")
 eq(row._value.TextColor3, Color3.fromRGB(112, 208, 92), "working is green")
-eq(row._dot.BackgroundColor3, Color3.fromRGB(112, 208, 92), "dot matches")
+eq(row._badge.dot.BackgroundColor3, Color3.fromRGB(112, 208, 92), "dot matches")
+do
+	local ring = M.find(sw._statusTag.frame, function(d) return d.Name == "Ring" end)
+	local before = ring.Size.X.Offset
+	M.advance(0.3)
+	check(ring.Size.X.Offset ~= before or ring.BackgroundTransparency < 1, "working dot pulses")
+end
 eq(row._desc.Text, "all features up", "status note shown")
 check(M.byText(sw._tagList, "working") ~= nil, "status tag in the header")
 sw:SetStatus("updating", "fixing aimbot")
@@ -1526,13 +1532,15 @@ eq(M.downloads, 2, "already downloaded images aren't fetched again")
 -- loading screen (automatic)
 local lw = Onyx:CreateWindow({ name = "Hub", loadingScreen = { duration = 1 }, discordPrompt = true, discord = "abc" })
 M.flush()
+check(M.byText(lw._gui, "Authenticating...") ~= nil, "first step: authenticating")
 check(lw:IsLoading(), "loading screen up")
 check(not lw._main.Visible, "menu waits for the loading screen")
 check(not lw._pill.Visible, "launcher waits too")
 eq(#lw._popups, 0, "popups wait until loading is done")
 local loadLayer = lw._gui:FindFirstChild("Loading")
 check(loadLayer ~= nil, "loading card shown")
-M.advance(0.5)
+M.advance(0.6)
+check(M.byText(lw._gui, "Loading features...") ~= nil, "second step: loading features")
 local midBar = loadLayer and M.find(loadLayer, function(d) return d.Name == "Bar" end)
 check(midBar and midBar.Size.X.Scale > 0.2 and midBar.Size.X.Scale < 0.9, "bar fills over time (" .. (midBar and midBar.Size.X.Scale or -1) .. ")")
 M.advance(1)
@@ -1554,15 +1562,27 @@ check(M.byText(mw2._gui, "40%") ~= nil, "SetLoading percent")
 M.advance(2)
 check(mw2:IsLoading(), "manual mode waits for you")
 mw2:FinishLoading()
-M.flush()
+M.advance(0.3)
 check(not mw2:IsLoading() and mw2._main.Visible, "FinishLoading opens the menu")
+eq(mw2._accentBar.Size.X.Scale, 1, "accent line swept across")
+eq(mw2._uiScale.Scale, mw2._scale, "intro ends at full size")
 mw2:Unload()
 
 -- loading screen + image preload, russian text
 M.web["https://cdn.example.com/c.png"] = "c"
 local rw = Onyx:CreateWindow({ name = "RU", language = "ru", loadingScreen = { images = { "https://cdn.example.com/c.png" }, duration = 0.2 } })
 M.flush()
-check(M.byText(rw._gui, "Загрузка картинок 1/1") ~= nil or not rw:IsLoading(), "image progress shown in russian")
+local sawAuth, sawImages = M.byText(rw._gui, "Аутентификация...") ~= nil, false
+local realSetLoading = rw.SetLoading
+rw.SetLoading = function(self, text, progress)
+	if text and self:_t(tostring(text)) == "Загрузка картинок 1/1" then
+		sawImages = true
+	end
+	return realSetLoading(self, text, progress)
+end
+M.advance(1)
+check(sawAuth, "starts on authenticating (russian)")
+check(sawImages, "image progress shown in russian")
 M.advance(1)
 check(not rw:IsLoading(), "done after images and duration")
 rw:Unload()
@@ -1573,6 +1593,104 @@ aw:Hide()
 check(not aw._main.Visible, "no animation: hides at once")
 aw:Unload()
 noErrors("images")
+end)()
+
+--------------------------------------------------------------------------------
+section("esp preview, links, accent, intro")
+--------------------------------------------------------------------------------
+
+;(function()
+local ew = Onyx:CreateWindow({ name = "ESP" })
+local et = ew:CreateTab({ name = "Visuals" })
+local es = et:CreateSection("ESP")
+local boxToggle = es:CreateToggle({ name = "Boxes", flag = "EspBoxes", value = true })
+local tracerToggle = es:CreateToggle({ name = "Tracers", flag = "EspTracers" })
+local chamsToggle = es:CreateToggle({ name = "Chams", flag = "EspChams" })
+local espColour = es:CreateColorPicker({ name = "ESP colour", flag = "EspColour", color = Color3.fromRGB(255, 0, 0) })
+M.flush()
+local preview = ew:CreateESPPreview({
+	playerName = "xX_enemy_Xx",
+	bind = { box = "EspBoxes", tracer = "EspTracers", chams = "EspChams", boxColor = "EspColour", tracerColor = "EspColour" },
+})
+check(not preview:IsOpen() and not preview.panel.Visible, "preview starts closed")
+local openButton = es:CreateButton({ name = "ESP preview", callback = function() preview:Toggle() end })
+M.click(hitbox(openButton.root))
+M.flush()
+check(preview:IsOpen() and preview.panel.Visible, "button opens it")
+local mainPos = ew._main.AbsolutePosition
+local mainSize = ew._main.AbsoluteSize
+check(preview.panel.AbsolutePosition.X >= mainPos.X + mainSize.X, "docked to the right of the window")
+check(math.abs(preview.panel.AbsolutePosition.Y - mainPos.Y) < 1, "lined up with the window top")
+eq(preview._name.Text, "xX_enemy_Xx", "name shown")
+check(preview._box.Visible, "box from the bound toggle")
+check(not preview._tracer.Visible, "tracer off like its toggle")
+tracerToggle:Set(true)
+check(preview._tracer.Visible, "turning the toggle on shows the tracer")
+eq(preview._tracer.BackgroundColor3, Color3.fromRGB(255, 0, 0), "tracer uses the bound colour")
+espColour:Set(Color3.fromRGB(0, 200, 255))
+eq(preview._tracer.BackgroundColor3, Color3.fromRGB(0, 200, 255), "colour picker updates it live")
+chamsToggle:Set(true)
+local torso = preview._figure:GetChildren()[2]
+eq(torso.BackgroundColor3, Color3.fromRGB(255, 60, 60), "chams tint the dummy")
+preview:Set("name", false)
+check(not preview._name.Visible, "Set turns parts off")
+preview:Set({ healthAmount = 20, distanceText = "120m" })
+eq(preview._distance.Text, "120m", "Set takes a table")
+ew:Hide()
+M.flush()
+M.advance(0.1)
+check(not preview.panel.Visible, "hides with the menu")
+ew:Show()
+M.advance(0.1)
+check(preview.panel.Visible, "comes back with the menu")
+-- no room on the right: goes left
+ew._main.AnchorPoint = Vector2.new(0, 0)
+ew._main.Position = UDim2.fromOffset(1280 - ew._main.AbsoluteSize.X - 4, 100)
+M.advance(0.05)
+check(preview.panel.AbsolutePosition.X < ew._main.AbsolutePosition.X, "flips to the left when there's no room")
+M.click(M.byText(preview.panel, "x"))
+check(not preview:IsOpen(), "x closes it")
+
+-- links
+local link = es:CreateLink({ name = "Our website", url = "https://www.example.com/hub?ref=menu" })
+M.flush()
+eq(link._host.Text, "example.com", "site shown on the right")
+eq(link._label.TextColor3, ew.Theme.Accent, "link is accent coloured")
+check(link._underline.Size.X.Offset > 0, "underlined")
+M.clipboard = nil
+M.click(hitbox(link.row))
+eq(M.clipboard, "https://www.example.com/hub?ref=menu", "click copies the link")
+check(M.byText(ew._toastTop, "Link copied") ~= nil, "says it copied")
+local bare = es:CreateLink({ url = "https://discord.gg/abc" })
+eq(bare._label.Text, "https://discord.gg/abc", "no name: shows the url")
+
+-- accent colour in settings
+local picker = ew._accentPicker
+check(picker ~= nil, "accent picker in settings")
+picker:Set(Color3.fromRGB(255, 120, 40))
+eq(ew.Theme.Accent, Color3.fromRGB(255, 120, 40), "picking a colour sets the accent")
+eq(link._label.TextColor3, Color3.fromRGB(255, 120, 40), "accent updates live")
+ew._themeDropdown:Set("cobalt")
+eq(picker.value, ew.Theme.Accent, "picking a theme moves the accent picker to its colour")
+ew:SetAccent(Color3.fromRGB(10, 200, 100))
+eq(picker.value, Color3.fromRGB(10, 200, 100), "SetAccent moves the picker")
+ew:Unload()
+
+local nw = Onyx:CreateWindow({ name = "NoAccent", accentSetting = false })
+eq(nw._accentPicker, nil, "accentSetting = false hides it")
+nw:Unload()
+
+-- the intro after loading
+local iw = Onyx:CreateWindow({ name = "Intro", loadingScreen = { duration = 0.2 } })
+M.flush()
+M.advance(0.25)
+check(not iw:IsLoading(), "loading done")
+eq(iw._accentBar.Size.X.Scale, 1, "accent line swept in")
+eq(iw._uiScale.Scale, iw._scale, "intro ended at full size")
+M.advance(0.8)
+check(not iw._cover.Visible, "content cover gone after the fade")
+iw:Unload()
+noErrors("esp preview")
 end)()
 
 --------------------------------------------------------------------------------

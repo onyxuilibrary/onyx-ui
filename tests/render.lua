@@ -117,7 +117,7 @@ elseif scene == "skins" or scene == "loading" then
 	if scene == "loading" then
 		local w = Onyx:CreateWindow(options({ name = "Noic Hub", subtitle = "Bloxstrike", infoBar = false, loadingScreen = { manual = true } }))
 		M.flush()
-		w:SetLoading("Loading images 3/8", 0.42)
+		w:SetLoading("Loading features...", 0.62)
 		gui = w._gui
 	else
 		local w = Onyx:CreateWindow(options({ name = "Noic Hub", subtitle = "skins", infoBar = false }))
@@ -136,6 +136,39 @@ elseif scene == "skins" or scene == "loading" then
 		w:Navigate("Skins")
 		gui = w._gui
 	end
+elseif scene == "esp" then
+	local w = Onyx:CreateWindow(options({ name = "Noic Hub", subtitle = "Bloxstrike", infoBar = false, size = UDim2.fromOffset(560, 430) }))
+	local tab = w:CreateTab({ name = "Visuals" })
+	w:CreateTab({ name = "Aimbot" })
+	w:CreateTab({ name = "Misc" })
+	local esp = tab:CreateSection({ name = "ESP", side = "left" })
+	esp:CreateToggle({ name = "Boxes", flag = "Boxes", value = true })
+	esp:CreateToggle({ name = "Names", flag = "Names", value = true })
+	esp:CreateToggle({ name = "Health bar", flag = "Health", value = true })
+	esp:CreateToggle({ name = "Distance", flag = "Distance", value = true })
+	esp:CreateToggle({ name = "Tracers", flag = "Tracers", value = true })
+	esp:CreateToggle({ name = "Chams", flag = "Chams" })
+	esp:CreateColorPicker({ name = "ESP colour", flag = "EspColour", color = Color3.fromRGB(255, 70, 70) })
+	local preview = w:CreateESPPreview({
+		playerName = "enemy_player",
+		bind = { box = "Boxes", name = "Names", health = "Health", distance = "Distance", tracer = "Tracers", chams = "Chams", boxColor = "EspColour", tracerColor = "EspColour" },
+	})
+	esp:CreateButton({ name = "ESP preview", callback = function() preview:Toggle() end })
+	local info = tab:CreateSection({ name = "Links", side = "right" })
+	info:CreateLink({ name = "Our website", url = "https://noichub.example.com" })
+	info:CreateLink({ name = "Discord server", url = "https://discord.gg/UBeRG8Qp2f" })
+	info:CreateLink({ name = "Script docs", url = "https://github.com/onyxuilibrary/onyx-ui" })
+	local about = tab:CreateSection({ name = "Script", side = "right" })
+	about:CreateStatus()
+	M.flush()
+	w:Navigate("Visuals")
+	preview:Show()
+	M.advance(0.4)
+	-- park the window left of centre so the preview has room
+	w._main.AnchorPoint = Vector2.new(0, 0)
+	w._main.Position = UDim2.fromOffset(330, 120)
+	M.advance(0.05)
+	gui = w._gui
 elseif scene == "crowded" then
 	-- lots of top tabs in a narrow window
 	local w = Onyx:CreateWindow(options({ subtitle = "lots of tabs", size = UDim2.fromOffset(628, 460), discord = "discord.gg/example", infoBar = true }))

@@ -11,6 +11,8 @@
 9. [Themes](themes.md)
 10. [Mobile](mobile.md)
 11. [Images and skin pickers](images.md)
+12. [Colours (colour pickers, accent colour)](colors.md)
+13. [ESP preview](esp-preview.md)
 
 Loadstring:
 

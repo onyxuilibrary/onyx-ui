@@ -6,7 +6,7 @@
 ]]
 
 local Onyx = {
-	Version = "1.5.0",
+	Version = "1.6.0",
 	Windows = {},
 }
 
@@ -2613,18 +2613,11 @@ local StatusRow = ElementClass()
 function Elements.StatusRow(holder, p)
 	local self = NewElement(StatusRow, holder, p, "StatusRow", 18)
 	local window = self.window
-	self._value = window:_label({
-		Size = UDim2.new(0, 110, 1, 0),
-		Position = UDim2.new(1, -110, 0, 0),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextSize = 12,
-		Parent = self.row,
-	}, "Text")
-	self._dot = window:_frame({ Size = UDim2.fromOffset(6, 6), AnchorPoint = Vector2.new(1, 0.5), Parent = self.row })
-	self:_reserve(124)
-	self:_connect(self._value:GetPropertyChangedSignal("TextBounds"), function()
-		self._dot.Position = UDim2.new(1, -(self._value.TextBounds.X + 6), 0.5, 0)
-	end)
+	self._badge = window:_statusBadge(self.row, true)
+	self._badge.frame.AnchorPoint = Vector2.new(1, 0.5)
+	self._badge.frame.Position = UDim2.new(1, 0, 0.5, 0)
+	self._value = self._badge.label
+	self:_reserve(130)
 	return Mount(self, 20)
 end
 
@@ -2636,13 +2629,7 @@ function StatusRow:Set(status)
 	if not status then
 		return
 	end
-	local function color()
-		return status.color
-	end
-	self._value.Text = string.upper(self.window:_t(status.text))
-	self.window:_paint(self._value, { TextColor3 = color })
-	self.window:_paint(self._dot, { BackgroundColor3 = color })
-	self._dot.Position = UDim2.new(1, -(self._value.TextBounds.X + 6), 0.5, 0)
+	self._badge:Set(status)
 	self.description = status.note
 	self:_setDescription(status.note)
 end
@@ -2931,6 +2918,72 @@ function Gallery:_load(value)
 	self:Set(value)
 end
 
+-- Link ------------------------------------------------------------------------
+
+-- section:CreateLink({ name = "Our website", url = "https://..." })
+-- underlined accent text with the site on the right. Roblox can't open a browser,
+-- so clicking copies the link and says so
+local LinkElement = ElementClass()
+
+local function LinkHost(url)
+	local host = string.match(tostring(url), "^%a+://([^/?#]+)") or tostring(url)
+	return (string.gsub(host, "^www%.", ""))
+end
+
+function Elements.Link(holder, p)
+	local self = NewElement(LinkElement, holder, p, "Link", 18)
+	local window = self.window
+	self.url = tostring(Pick(p, "", "url", "link", "href"))
+	self.callback = Pick(p, nil, "callback", "onclick")
+	if not self.name or self.name == "" then
+		self.name = self.url
+		window:_text(self._label, self.name)
+	end
+	window:_paint(self._label, { TextColor3 = "Accent" })
+	self._underline = window:_frame({ Name = "Underline", Size = UDim2.fromOffset(0, 1), Position = UDim2.new(0, self._inset, 1, -2), BackgroundTransparency = 0.5, Parent = self.row }, { BackgroundColor3 = "Accent" })
+	self._host = window:_label({ Text = LinkHost(self.url), Size = UDim2.new(0, 120, 1, 0), Position = UDim2.new(1, -120, 0, 0), TextSize = 11, TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Parent = self.row }, "Placeholder")
+	self:_reserve(126)
+	local function fitLine()
+		self._underline.Size = UDim2.fromOffset(math.min(self._label.TextBounds.X, self._label.AbsoluteSize.X), 1)
+	end
+	self:_connect(self._label:GetPropertyChangedSignal("TextBounds"), fitLine)
+	fitLine()
+
+	local hitbox = window:_hitbox(self.row, 2)
+	Hover(window, hitbox, function()
+		if not self._locked then
+			window:_paint(self._label, { TextColor3 = "Text" })
+			self._underline.BackgroundTransparency = 0
+		end
+	end, function()
+		window:_paint(self._label, { TextColor3 = "Accent" })
+		self._underline.BackgroundTransparency = 0.5
+	end, self)
+	self:_connect(hitbox.Activated, function()
+		if not self._locked then
+			self:Open()
+		end
+	end)
+	return Mount(self, 20)
+end
+
+function LinkElement:Open()
+	local window = self.window
+	local copied = SetClipboard(self.url)
+	window:Toast({ title = copied and "Link copied" or "Copy this link", subtitle = self.url, duration = 2.5 })
+	Call(self.callback, self.url)
+	return copied
+end
+
+function LinkElement:Set(url, name)
+	self.url = tostring(url or self.url)
+	self._host.Text = LinkHost(self.url)
+	if name then
+		self.name = name
+		self.window:_text(self._label, name)
+	end
+end
+
 -- section:CreateDiscord({ invite = "discord.gg/abc" }) - button with the discord logo
 function Elements.Discord(holder, p)
 	local window = holder.window
@@ -2990,6 +3043,8 @@ local function DefineCreators(target, resolve)
 	target.CreateStatus = creator("Status")
 	target.CreateDiscord = creator("Discord")
 	target.CreateImage = creator("Image")
+	target.CreateLink = creator("Link")
+	target.CreateHyperlink = target.CreateLink
 	target.CreateImageGallery = creator("ImageGallery")
 	target.CreateImagePicker = target.CreateImageGallery
 	target.CreateParagraph = function(self, props)
@@ -3411,6 +3466,12 @@ local BuiltinTranslations = {
 		["Loading..."] = "Cargando...",
 		["Ready"] = "Listo",
 		["Loading images {done}/{total}"] = "Cargando imágenes {done}/{total}",
+		["Authenticating..."] = "Autenticando...",
+		["Loading features..."] = "Cargando funciones...",
+		["ESP preview"] = "Vista previa ESP",
+		["Accent colour"] = "Color de acento",
+		["Link copied"] = "Enlace copiado",
+		["Copy this link"] = "Copia este enlace",
 	},
 	pt = {
 		["Settings"] = "Configurações",
@@ -3480,6 +3541,12 @@ local BuiltinTranslations = {
 		["Loading..."] = "Carregando...",
 		["Ready"] = "Pronto",
 		["Loading images {done}/{total}"] = "Carregando imagens {done}/{total}",
+		["Authenticating..."] = "Autenticando...",
+		["Loading features..."] = "Carregando funções...",
+		["ESP preview"] = "Prévia do ESP",
+		["Accent colour"] = "Cor de destaque",
+		["Link copied"] = "Link copiado",
+		["Copy this link"] = "Copie este link",
 	},
 	fr = {
 		["Settings"] = "Paramètres",
@@ -3549,6 +3616,12 @@ local BuiltinTranslations = {
 		["Loading..."] = "Chargement...",
 		["Ready"] = "Prêt",
 		["Loading images {done}/{total}"] = "Chargement des images {done}/{total}",
+		["Authenticating..."] = "Authentification...",
+		["Loading features..."] = "Chargement des fonctions...",
+		["ESP preview"] = "Aperçu ESP",
+		["Accent colour"] = "Couleur d'accent",
+		["Link copied"] = "Lien copié",
+		["Copy this link"] = "Copie ce lien",
 	},
 	de = {
 		["Settings"] = "Einstellungen",
@@ -3618,6 +3691,12 @@ local BuiltinTranslations = {
 		["Loading..."] = "Lädt...",
 		["Ready"] = "Fertig",
 		["Loading images {done}/{total}"] = "Lade Bilder {done}/{total}",
+		["Authenticating..."] = "Authentifiziere...",
+		["Loading features..."] = "Lade Funktionen...",
+		["ESP preview"] = "ESP-Vorschau",
+		["Accent colour"] = "Akzentfarbe",
+		["Link copied"] = "Link kopiert",
+		["Copy this link"] = "Kopier diesen Link",
 	},
 	ru = {
 		["Settings"] = "Настройки",
@@ -3687,6 +3766,12 @@ local BuiltinTranslations = {
 		["Loading..."] = "Загрузка...",
 		["Ready"] = "Готово",
 		["Loading images {done}/{total}"] = "Загрузка картинок {done}/{total}",
+		["Authenticating..."] = "Аутентификация...",
+		["Loading features..."] = "Загрузка функций...",
+		["ESP preview"] = "Превью ESP",
+		["Accent colour"] = "Цвет акцента",
+		["Link copied"] = "Ссылка скопирована",
+		["Copy this link"] = "Скопируй эту ссылку",
 	},
 	tr = {
 		["Settings"] = "Ayarlar",
@@ -3756,6 +3841,12 @@ local BuiltinTranslations = {
 		["Loading..."] = "Yükleniyor...",
 		["Ready"] = "Hazır",
 		["Loading images {done}/{total}"] = "Resimler yükleniyor {done}/{total}",
+		["Authenticating..."] = "Doğrulanıyor...",
+		["Loading features..."] = "Özellikler yükleniyor...",
+		["ESP preview"] = "ESP önizleme",
+		["Accent colour"] = "Vurgu rengi",
+		["Link copied"] = "Link kopyalandı",
+		["Copy this link"] = "Bu linki kopyala",
 	},
 	vi = {
 		["Settings"] = "Cài đặt",
@@ -3825,6 +3916,12 @@ local BuiltinTranslations = {
 		["Loading..."] = "Đang tải...",
 		["Ready"] = "Xong",
 		["Loading images {done}/{total}"] = "Đang tải ảnh {done}/{total}",
+		["Authenticating..."] = "Đang xác thực...",
+		["Loading features..."] = "Đang tải tính năng...",
+		["ESP preview"] = "Xem trước ESP",
+		["Accent colour"] = "Màu nhấn",
+		["Link copied"] = "Đã sao chép link",
+		["Copy this link"] = "Sao chép link này",
 	},
 	id = {
 		["Settings"] = "Pengaturan",
@@ -3894,6 +3991,12 @@ local BuiltinTranslations = {
 		["Loading..."] = "Memuat...",
 		["Ready"] = "Siap",
 		["Loading images {done}/{total}"] = "Memuat gambar {done}/{total}",
+		["Authenticating..."] = "Mengautentikasi...",
+		["Loading features..."] = "Memuat fitur...",
+		["ESP preview"] = "Pratinjau ESP",
+		["Accent colour"] = "Warna aksen",
+		["Link copied"] = "Link disalin",
+		["Copy this link"] = "Salin link ini",
 	},
 	pl = {
 		["Settings"] = "Ustawienia",
@@ -3963,8 +4066,15 @@ local BuiltinTranslations = {
 		["Loading..."] = "Ładowanie...",
 		["Ready"] = "Gotowe",
 		["Loading images {done}/{total}"] = "Ładowanie obrazków {done}/{total}",
+		["Authenticating..."] = "Uwierzytelnianie...",
+		["Loading features..."] = "Ładowanie funkcji...",
+		["ESP preview"] = "Podgląd ESP",
+		["Accent colour"] = "Kolor akcentu",
+		["Link copied"] = "Skopiowano link",
+		["Copy this link"] = "Skopiuj ten link",
 	},
 }
+
 
 
 
@@ -4260,6 +4370,11 @@ end
 -- Flags and saving -------------------------------------------------------------
 
 function Window:_valueChanged(element)
+	for _, preview in ipairs(self._previews or {}) do
+		if element.flag then
+			preview:_sync(element.flag)
+		end
+	end
 	if self._loading or not self._config or not self._config.autoSave or element.forgetState then
 		return
 	end
@@ -4749,6 +4864,74 @@ function Window:CreateTag(props)
 	return tag
 end
 
+-- Status badge ----------------------------------------------------------------------
+
+-- the working / updating / patched badge: tinted box with a coloured edge, a dot with
+-- a ring that softly pings out of it, and the word
+local PulseSpeed = { working = 0.7, updating = 1.5 }
+
+function Window:_statusBadge(parent, upper)
+	local window = self
+	local current
+	local badge = self:_frame({ Name = "StatusBadge", Size = UDim2.fromOffset(0, 16), AutomaticSize = AUTO_X, Parent = parent }, {
+		BackgroundColor3 = function(theme)
+			return theme.Element:Lerp(current and current.color or theme.Element, 0.16)
+		end,
+	})
+	local stroke = Create("UIStroke", { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Transparency = 0.35, Parent = badge })
+	Padding(badge, 0, 6, 0, 5)
+	List(badge, 5, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center })
+	local holder = self:_frame({ Size = UDim2.fromOffset(6, 6), BackgroundTransparency = 1, LayoutOrder = 1, Parent = badge })
+	local ring = self:_frame({ Name = "Ring", Size = UDim2.fromOffset(6, 6), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 1, Parent = holder })
+	local dot = self:_frame({ Name = "Dot", Size = UDim2.fromOffset(6, 6), Parent = holder })
+	local label = self:_label({ Size = UDim2.fromScale(0, 1), AutomaticSize = AUTO_X, TextSize = 11, LayoutOrder = 2, Parent = badge }, "Text")
+	local pulse = { ring = ring, speed = 0 }
+	table.insert(self._pulses, pulse)
+
+	local object = { frame = badge, label = label, dot = dot }
+	function object:Set(status)
+		current = status
+		local color = status.color
+		local text = window:_t(status.text)
+		label.Text = upper and string.upper(text) or string.lower(text)
+		window:_paint(label, { TextColor3 = function()
+			return color
+		end })
+		window:_paint(dot, { BackgroundColor3 = function()
+			return color
+		end })
+		window:_paint(badge, { BackgroundColor3 = function(theme)
+			return theme.Element:Lerp(color, 0.16)
+		end })
+		stroke.Color = color
+		ring.BackgroundColor3 = color
+		pulse.speed = PulseSpeed[status.state] or 0
+		if pulse.speed == 0 then
+			ring.BackgroundTransparency = 1
+		end
+	end
+	function object:Remove()
+		badge:Destroy()
+	end
+	object.Destroy = object.Remove
+	return object
+end
+
+function Window:_tickPulses(now)
+	for i = #self._pulses, 1, -1 do
+		local pulse = self._pulses[i]
+		if not pulse.ring.Parent then
+			table.remove(self._pulses, i)
+		elseif pulse.speed > 0 then
+			-- ring grows out of the dot and fades
+			local t = (now * pulse.speed) % 1
+			local size = 6 + 8 * t
+			pulse.ring.Size = UDim2.fromOffset(size, size)
+			pulse.ring.BackgroundTransparency = 0.35 + 0.65 * t
+		end
+	end
+end
+
 -- Notifications ------------------------------------------------------------------
 
 local function AutoDuration(...)
@@ -5076,9 +5259,10 @@ function Window:Show()
 	self._animation = (self._animation or 0) + 1
 	self._main.Visible = true
 	if wasHidden and self._animate then
-		-- small pop in
+		-- small pop in, content fades up behind it
 		self._uiScale.Scale = self._scale * 0.92
 		Tween(self._uiScale, { Scale = self._scale }, 0.22, Enum.EasingStyle.Quint)
+		self:_fadeContent(0.05, 0.22)
 	else
 		self._uiScale.Scale = self._scale
 	end
@@ -5163,6 +5347,20 @@ function Window:ChangeTheme(spec)
 	local dropdown = self._themeDropdown
 	if dropdown and not dropdown._removed and dropdown.value[1] ~= self.Theme.Name and IndexOf(dropdown.options, self.Theme.Name) then
 		dropdown:Set(self.Theme.Name, true)
+	end
+end
+
+-- just the accent colour, everything else about the theme stays
+function Window:SetAccent(color)
+	color = ToColor3(color)
+	if not color then
+		return
+	end
+	local name = self.Theme.Name
+	self:ChangeTheme({ Accent = color, Rainbow = self.Theme.Rainbow })
+	self.Theme.Name = name
+	if self._accentPicker and not self._accentPicker._removed and self._accentPicker.value ~= color then
+		self._accentPicker:Set(color, true)
 	end
 end
 
@@ -5374,8 +5572,22 @@ function Window:_buildSettings()
 			elseif Themes[name] then
 				self:ChangeTheme(name)
 			end
+			-- a new theme brings its own accent, show it in the picker
+			if self._accentPicker and not self._accentPicker._removed then
+				self._accentPicker:Set(self.Theme.Accent, true)
+			end
 		end,
 	})
+	if self._accentSetting then
+		self._accentPicker = menu:CreateColorPicker({
+			name = "Accent colour",
+			flag = "OnyxAccent",
+			color = self.Theme.Accent,
+			callback = function(color)
+				self:SetAccent(color)
+			end,
+		})
+	end
 	if self._languageSetting then
 		local names = {}
 		for _, language in ipairs(self:_languageList()) do
@@ -5586,11 +5798,11 @@ function Window:SetStatus(state, note)
 	local status = ResolveStatus(state, note)
 	self.status = status
 	if self._showStatusTag then
-		if self._statusTag then
-			self._statusTag:Set({ text = string.lower(self:_t(status.text)), color = status.color })
-		else
-			self._statusTag = self:CreateTag({ text = string.lower(self:_t(status.text)), color = status.color, order = -1 })
+		if not self._statusTag then
+			self._statusTag = self:_statusBadge(self._tagList, false)
+			self._statusTag.frame.LayoutOrder = 99
 		end
+		self._statusTag:Set(status)
 	end
 	self:_eachStatusRow(function(row)
 		row:Set(status)
@@ -5837,6 +6049,295 @@ function Window:ShowDiscordPrompt(props)
 	return prompt
 end
 
+-- content fades in from the background colour
+function Window:_fadeContent(delay, duration)
+	local cover = self._cover
+	if not cover then
+		return
+	end
+	local animation = self._animation
+	cover.BackgroundTransparency = 0
+	cover.Visible = true
+	task.delay(delay, function()
+		if self._animation ~= animation or self.unloaded then
+			return
+		end
+		local tween = Tween(cover, { BackgroundTransparency = 1 }, duration, Enum.EasingStyle.Quad)
+		tween.Completed:Connect(function()
+			if self._animation == animation then
+				cover.Visible = false
+			end
+		end)
+	end)
+end
+
+-- the big entrance after the loading screen: the window glides up while it grows,
+-- the accent line sweeps across and the content fades in
+function Window:_playIntro()
+	if self.unloaded or self._keyLocked then
+		return
+	end
+	local main = self._main
+	self.visible = true
+	self._animation = (self._animation or 0) + 1
+	main.Visible = true
+	self:_refreshPill()
+	if not self._animate then
+		self._uiScale.Scale = self._scale
+		return
+	end
+	local home = main.Position
+	main.Position = home + UDim2.fromOffset(0, 26)
+	self._uiScale.Scale = self._scale * 0.86
+	Tween(main, { Position = home }, 0.6, Enum.EasingStyle.Quint)
+	Tween(self._uiScale, { Scale = self._scale }, 0.6, Enum.EasingStyle.Quint)
+	if self._accentBar then
+		self._accentBar.Size = UDim2.new(0, 0, 0, 2)
+		Tween(self._accentBar, { Size = UDim2.new(1, 0, 0, 2) }, 0.7, Enum.EasingStyle.Quint)
+	end
+	self:_fadeContent(0.15, 0.45)
+end
+
+-- ESP preview -----------------------------------------------------------------------
+
+-- a panel docked next to the window with a dummy player, showing what the ESP will
+-- look like: box, name, health bar, distance, tracer and chams. it only draws a
+-- picture, the real ESP is still your script's job.
+-- bind = { box = "MyBoxToggleFlag", boxColor = "MyColourFlag", ... } keeps it in sync
+-- with your own toggles and colour pickers.
+local EspDefaults = {
+	box = true, name = true, health = true, distance = true, tracer = false, chams = false,
+	boxColor = Color3.fromRGB(255, 255, 255),
+	nameColor = Color3.fromRGB(255, 255, 255),
+	tracerColor = Color3.fromRGB(255, 255, 255),
+	chamsColor = Color3.fromRGB(255, 60, 60),
+	healthAmount = 72,
+	playerName = "Enemy",
+	distanceText = "34m",
+}
+
+-- option names people are likely to use, mapped onto ours
+local EspAliases = {
+	boxes = "box", names = "name", healthbar = "health", distances = "distance", tracers = "tracer",
+	highlight = "chams", highlights = "chams", color = "boxColor", colour = "boxColor",
+	boxcolour = "boxColor", namecolour = "nameColor", tracercolour = "tracerColor", chamscolour = "chamsColor",
+	boxcolor = "boxColor", namecolor = "nameColor", tracercolor = "tracerColor", chamscolor = "chamsColor",
+	healthamount = "healthAmount", playername = "playerName", distancetext = "distanceText",
+}
+
+local function EspKey(key)
+	key = tostring(key)
+	return EspAliases[string.lower(key)] or (EspDefaults[key] ~= nil and key) or (EspDefaults[string.lower(key)] ~= nil and string.lower(key)) or key
+end
+
+function Window:CreateESPPreview(props)
+	local window = self
+	local p = type(props) == "table" and props or {}
+	local options = {}
+	for key, value in pairs(EspDefaults) do
+		options[key] = value
+	end
+	local bind = {}
+	for key, value in pairs(p) do
+		local lower = string.lower(tostring(key))
+		if lower == "bind" or lower == "flags" then
+			for option, flag in pairs(value) do
+				bind[EspKey(option)] = flag
+			end
+		elseif lower ~= "title" and lower ~= "open" and lower ~= "visible" then
+			options[EspKey(key)] = value
+		end
+	end
+	local lp = LowerKeys(p)
+	local preview = { options = options, bind = bind }
+	local width, height = 180, 250
+
+	local panel, fill = self:_rim({ Name = "ESPPreview", Size = UDim2.fromOffset(width, 0), ZIndex = 12, Visible = false, Parent = self._gui }, "Panel")
+	local scaler = Create("UIScale", { Scale = self._scale, Parent = panel })
+	List(fill, 0)
+	self:_frame({ Size = UDim2.new(1, 0, 0, 2), LayoutOrder = 0, Parent = fill }, { BackgroundColor3 = "Accent" })
+	local header = self:_frame({ Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, LayoutOrder = 1, Parent = fill })
+	local title = self:_label({ Size = UDim2.new(1, -30, 1, 0), Position = UDim2.fromOffset(8, 0), Parent = header }, "Text")
+	self:_text(title, Pick(lp, "ESP preview", "title"))
+	local close = Create("TextButton", { Text = "x", TextSize = 13, AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromOffset(22, 22), Position = UDim2.new(1, -24, 0, 0), Parent = header })
+	self:_paint(close, { TextColor3 = "TextDim", FontFace = "Font" })
+
+	local stageBox = self:_frame({ Size = UDim2.new(1, 0, 0, height - 30), BackgroundTransparency = 1, LayoutOrder = 2, Parent = fill })
+	Padding(stageBox, 0, 8, 8, 8)
+	local _, stage = self:_box(stageBox, UDim2.fromScale(1, 1), nil, "Background")
+	stage.ClipsDescendants = true
+
+	-- dummy player, blocky R6 shape
+	local figure = self:_frame({ Name = "Figure", Size = UDim2.fromOffset(60, 136), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 4), BackgroundTransparency = 1, Parent = stage })
+	local parts = {}
+	local function limb(x, y, w, h)
+		local part = Create("Frame", { BorderSizePixel = 0, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, h), Parent = figure })
+		table.insert(parts, part)
+		return part
+	end
+	limb(19, 0, 22, 22) -- head
+	limb(12, 24, 36, 44) -- torso
+	limb(0, 24, 11, 44) -- arms
+	limb(49, 24, 11, 44)
+	limb(12, 69, 17, 67) -- legs
+	limb(31, 69, 17, 67)
+
+	-- box: black edge with the colour inside, like most cheat esp
+	local box = self:_frame({ Name = "Box", Size = UDim2.fromOffset(76, 150), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 4), BackgroundTransparency = 1, Parent = stage })
+	local edges = {}
+	for _, spec in ipairs({
+		{ UDim2.new(1, 0, 0, 3), UDim2.new() },
+		{ UDim2.new(1, 0, 0, 3), UDim2.new(0, 0, 1, -3) },
+		{ UDim2.new(0, 3, 1, 0), UDim2.new() },
+		{ UDim2.new(0, 3, 1, 0), UDim2.new(1, -3, 0, 0) },
+	}) do
+		local outer = Create("Frame", { BorderSizePixel = 0, BackgroundColor3 = Color3.new(0, 0, 0), Size = spec[1], Position = spec[2], Parent = box })
+		local inner = Create("Frame", { BorderSizePixel = 0, Size = UDim2.new(1, -2, 1, -2), Position = UDim2.fromOffset(1, 1), Parent = outer })
+		table.insert(edges, inner)
+	end
+	local nameLabel = self:_label({ Size = UDim2.new(1, 40, 0, 14), Position = UDim2.new(0, -20, 0, -17), TextSize = 12, TextXAlignment = Enum.TextXAlignment.Center, TextStrokeTransparency = 0.4, Parent = box })
+	local distanceLabel = self:_label({ Size = UDim2.new(1, 40, 0, 14), Position = UDim2.new(0, -20, 1, 3), TextSize = 11, TextXAlignment = Enum.TextXAlignment.Center, TextStrokeTransparency = 0.4, Parent = box })
+	local healthBack = Create("Frame", { BorderSizePixel = 0, BackgroundColor3 = Color3.new(0, 0, 0), Size = UDim2.new(0, 4, 1, 0), Position = UDim2.fromOffset(-7, 0), Parent = box })
+	local healthFill = Create("Frame", { BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 1, 1, -1), Parent = healthBack })
+	local tracer = Create("Frame", { Name = "Tracer", BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.new(0, 1, 0, 40), Position = UDim2.new(0.5, 0, 1, 18), Parent = box })
+	preview._figure, preview._box, preview._name, preview._distance, preview._health, preview._tracer = figure, box, nameLabel, distanceLabel, healthBack, tracer
+
+	local function color(value, fallback)
+		return ToColor3(value, fallback)
+	end
+
+	function preview:_render()
+		local o = self.options
+		box.Visible = o.box == true or o.name == true or o.distance == true or o.health == true or o.tracer == true
+		for _, edge in ipairs(edges) do
+			edge.Parent.Visible = o.box == true
+			edge.BackgroundColor3 = color(o.boxColor, EspDefaults.boxColor)
+		end
+		nameLabel.Visible = o.name == true
+		nameLabel.Text = tostring(o.playerName)
+		nameLabel.TextColor3 = color(o.nameColor, EspDefaults.nameColor)
+		window._themed[nameLabel] = { FontFace = "Font" }
+		distanceLabel.Visible = o.distance == true
+		distanceLabel.Text = tostring(o.distanceText)
+		distanceLabel.TextColor3 = color(o.nameColor, EspDefaults.nameColor)
+		window._themed[distanceLabel] = { FontFace = "Font" }
+		healthBack.Visible = o.health == true
+		local amount = math.clamp(tonumber(o.healthAmount) or 100, 0, 100) / 100
+		healthFill.Size = UDim2.new(1, -2, amount, -2)
+		healthFill.BackgroundColor3 = Color3.fromRGB(230, 60, 60):Lerp(Color3.fromRGB(90, 220, 90), amount)
+		tracer.Visible = o.tracer == true
+		tracer.BackgroundColor3 = color(o.tracerColor, EspDefaults.tracerColor)
+		local chams = o.chams == true
+		local chamsColor = color(o.chamsColor, EspDefaults.chamsColor)
+		for _, part in ipairs(parts) do
+			part.BackgroundColor3 = chams and chamsColor or Color3.fromRGB(78, 80, 88)
+			part.BackgroundTransparency = chams and 0.25 or 0
+		end
+	end
+
+	function preview:Set(key, value)
+		if type(key) == "table" then
+			for k, v in pairs(key) do
+				self.options[EspKey(k)] = v
+			end
+		else
+			self.options[EspKey(key)] = value
+		end
+		self:_render()
+	end
+
+	function preview:Get(key)
+		return self.options[EspKey(key)]
+	end
+
+	-- sits next to the window: right side if there's room, otherwise left, otherwise inside
+	function preview:_place()
+		local main = window._main
+		local screen = window._gui.AbsoluteSize
+		local position, size = LocalPosition(main, window._gui), main.AbsoluteSize
+		local scale = window._scale
+		scaler.Scale = scale
+		local w = width * scale
+		local x = position.X + size.X + 8
+		if screen.X > 0 and x + w > screen.X then
+			x = position.X - w - 8
+			if x < 0 then
+				x = position.X + size.X - w - 8
+			end
+		end
+		panel.Position = UDim2.fromOffset(x, position.Y)
+	end
+
+	function preview:Show()
+		self.open = true
+		self:_render()
+		self:_place()
+		panel.Visible = window.visible and not window._loadingScreen
+	end
+
+	function preview:Hide()
+		self.open = false
+		panel.Visible = false
+	end
+
+	function preview:Toggle()
+		if self.open then
+			self:Hide()
+		else
+			self:Show()
+		end
+	end
+
+	function preview:IsOpen()
+		return self.open == true
+	end
+
+	function preview:Destroy()
+		self.open = false
+		panel:Destroy()
+		local index = IndexOf(window._previews, self)
+		if index then
+			table.remove(window._previews, index)
+		end
+	end
+	preview.Remove = preview.Destroy
+	preview.panel = panel
+
+	-- pull bound values from flags that already exist
+	function preview:_sync(flag)
+		for option, boundFlag in pairs(self.bind) do
+			if flag == nil or boundFlag == flag then
+				local value = window:Get(boundFlag)
+				if value ~= nil then
+					if typeof(value) == "table" and value[1] ~= nil then
+						value = value[1]
+					end
+					self.options[option] = value
+				end
+			end
+		end
+		self:_render()
+	end
+
+	close.Activated:Connect(function()
+		preview:Hide()
+	end)
+	window:_connect(RunService.RenderStepped, function()
+		if preview.open and panel.Parent then
+			panel.Visible = window.visible and not window._loadingScreen
+			if panel.Visible then
+				preview:_place()
+			end
+		end
+	end)
+	table.insert(window._previews, preview)
+	preview:_sync()
+	if Pick(lp, false, "open", "visible") == true then
+		preview:Show()
+	end
+	return preview
+end
+
 -- Loading screen --------------------------------------------------------------------
 
 -- card with the hub name and a progress bar, shown before the menu opens.
@@ -5844,6 +6345,7 @@ end
 -- with SetLoading / FinishLoading
 function Window:_showLoading(spec)
 	local o = type(spec) == "table" and LowerKeys(spec) or {}
+	local manual = Pick(o, false, "manual") == true
 	self._loadingScreen = true
 	self._afterLoading = self._afterLoading or {}
 	self._main.Visible = false
@@ -5880,19 +6382,25 @@ function Window:_showLoading(spec)
 	local bar = self:_frame({ Name = "Bar", Size = UDim2.fromScale(0, 1), Parent = track }, { BackgroundColor3 = "Accent" })
 
 	local footer = self:_frame({ Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, LayoutOrder = 3, Parent = body })
-	local status = self:_label({ Text = self:_t(Pick(o, "Loading...", "text", "status")), Size = UDim2.new(1, -40, 1, 0), TextSize = 11, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer }, "TextDim")
+	local status = self:_label({ Text = self:_t(Pick(o, manual and "Loading..." or "Authenticating...", "text", "status")), Size = UDim2.new(1, -40, 1, 0), TextSize = 11, TextTruncate = Enum.TextTruncate.AtEnd, Parent = footer }, "TextDim")
 	local percent = self:_label({ Text = "0%", Size = UDim2.new(0, 40, 1, 0), Position = UDim2.new(1, -40, 0, 0), TextSize = 11, TextXAlignment = Enum.TextXAlignment.Right, Parent = footer }, "Text")
 
 	Tween(card, { Position = UDim2.fromScale(0.5, 0.5) }, 0.35, Enum.EasingStyle.Quint)
 	self._loader = { layer = layer, card = card, bar = bar, status = status, percent = percent, progress = 0 }
 
-	local manual = Pick(o, false, "manual") == true
 	local duration = tonumber(Pick(o, 1.5, "duration", "time")) or 1.5
 	local images = Pick(o, nil, "images", "preload")
 	local timeout = tonumber(Pick(o, 30, "timeout")) or 30
+	-- automatic mode walks through these, each gets an equal part of the bar
+	local steps = Pick(o, { "Authenticating...", "Loading features..." }, "steps")
+	if type(steps) ~= "table" then
+		steps = { tostring(steps) }
+	end
 	task.spawn(function()
-		if type(images) == "table" and #images > 0 then
-			self:PreloadImages(images)
+		if manual then
+			if type(images) == "table" and #images > 0 then
+				self:PreloadImages(images)
+			end
 		end
 		if manual then
 			-- you call FinishLoading. this is just so nobody gets stuck on it
@@ -5901,14 +6409,45 @@ function Window:_showLoading(spec)
 				task.wait(0.1)
 			end
 		else
-			local from = self._loader and self._loader.progress or 0
-			local steps = math.max(1, math.floor(duration / 0.05))
-			for i = 1, steps do
+			local phases = {}
+			for _, text in ipairs(steps) do
+				table.insert(phases, { text = text })
+			end
+			if type(images) == "table" and #images > 0 then
+				-- pictures download after the first step
+				table.insert(phases, math.min(2, #phases + 1), { images = images })
+			end
+			if #phases == 0 then
+				phases = { { text = "Loading..." } }
+			end
+			local timed = 0
+			for _, phase in ipairs(phases) do
+				if phase.text then
+					timed = timed + 1
+				end
+			end
+			local share = 1 / #phases
+			for index, phase in ipairs(phases) do
 				if not self._loadingScreen or self.unloaded then
 					return
 				end
-				self:SetLoading(nil, from + (1 - from) * (i / steps))
-				task.wait(duration / steps)
+				local from = (index - 1) * share
+				if phase.images then
+					Onyx:PreloadImages(phase.images, function(done, total)
+						self:SetLoading(self:_tf("Loading images {done}/{total}", { done = done, total = total }), from + share * done / total)
+					end)
+				else
+					self:SetLoading(phase.text, nil)
+					local length = duration / math.max(1, timed)
+					local ticks = math.max(1, math.floor(length / 0.05))
+					for i = 1, ticks do
+						if not self._loadingScreen or self.unloaded then
+							return
+						end
+						self:SetLoading(nil, from + share * (i / ticks))
+						task.wait(length / ticks)
+					end
+				end
 			end
 		end
 		self:FinishLoading()
@@ -5959,7 +6498,12 @@ function Window:FinishLoading()
 		loader.layer:Destroy()
 	end)
 	self._loadingScreen = false
-	self:Show()
+	task.delay(fade * 0.6, function()
+		-- start while the card is still fading so it flows into the menu
+		if not self._loadingScreen and self.visible ~= false then
+			self:_playIntro()
+		end
+	end)
 	if self._infoBar then
 		self:SetInfoBar(self.infoBarVisible)
 	end
@@ -6480,6 +7024,7 @@ function Onyx:CreateWindow(props)
 	window.toggleKey = ParseKey(Pick(p, nil, "togglekey", "toggleuikeybind", "keybind")) or Enum.KeyCode.RightShift
 	window.locale = Pick(p, nil, "language", "locale") or (LocalPlayer and LocalPlayer.LocaleId) or "en-us"
 	window._languageSetting = Pick(p, true, "languagesetting") ~= false
+	window._accentSetting = Pick(p, true, "accentsetting") ~= false
 	window._languageCodes = Pick(p, nil, "languages")
 	local languageNames = Pick(p, nil, "languagenames")
 	if type(languageNames) == "table" then
@@ -6505,6 +7050,8 @@ function Onyx:CreateWindow(props)
 	window._showStatusTag = Pick(p, true, "statustag") ~= false
 	window._animate = Pick(p, true, "animations", "animation") ~= false
 	window._afterLoading = {}
+	window._pulses = {}
+	window._previews = {}
 	local discord = Pick(p, nil, "discord", "discordinvite")
 	if type(discord) == "table" then
 		discord = Pick(LowerKeys(discord), nil, "invite", "link", "url", "code")
@@ -6571,14 +7118,19 @@ function Onyx:CreateWindow(props)
 
 	-- Accent bar
 	local accent = window:_frame({ Name = "Accent", Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = Color3.new(1, 1, 1), Parent = body })
+	window._accentBar = accent
+	window._body = body
 	window._accentGradient = Create("UIGradient", { Parent = accent })
 	window:_refreshAccentBar()
 	local lastFrame = 0
 	window:_connect(RunService.RenderStepped, function()
 		local now = os.clock()
-		if window.Theme.LiveAnimation and window.visible and now - lastFrame >= 1 / 30 then
+		if window.visible and now - lastFrame >= 1 / 30 then
 			lastFrame = now
-			window:_refreshAccentBar(now * 0.08)
+			if window.Theme.LiveAnimation then
+				window:_refreshAccentBar(now * 0.08)
+			end
+			window:_tickPulses(now)
 		end
 	end)
 
@@ -6756,6 +7308,17 @@ function Onyx:CreateWindow(props)
 		contentTop = HEADER_HEIGHT + TABSTRIP_HEIGHT
 		window._pages = window:_frame({ Name = "Pages", Size = UDim2.new(1, 0, 1, -contentTop), Position = UDim2.fromOffset(0, contentTop), BackgroundTransparency = 1, Parent = body })
 	end
+
+	-- covers the content while it fades in on open
+	window._cover = window:_frame({
+		Name = "Cover",
+		Size = UDim2.new(1, 0, 1, -HEADER_HEIGHT),
+		Position = UDim2.fromOffset(0, HEADER_HEIGHT),
+		BackgroundTransparency = 1,
+		Visible = false,
+		ZIndex = 8,
+		Parent = body,
+	}, { BackgroundColor3 = "Background" })
 
 	-- Resize grip
 	local grip = Create("TextButton", {

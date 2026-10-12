@@ -12,10 +12,12 @@ There are three statuses:
 | `updating` | orange | the game updated and you're fixing things, some features might be broken |
 | `patched` | red | the script doesn't work right now, people shouldn't use it until you fix it |
 
-It shows in two places:
+It shows in two places, as a badge with a coloured edge and a dot:
 
-- a little coloured tag next to the window title (`working` / `updating` / `patched`)
+- next to the window title (`working` / `updating` / `patched`)
 - the **About** box in the Settings tab, with your note underneath
+
+On `working` a ring softly pings out of the dot, on `updating` it pings faster, and `patched` stays still.
 
 The status is only a label. It doesn't turn anything off. If you want features to stop working when you're patched, check it yourself (see [checking the status in your code](#checking-the-status-in-your-code)).
 
